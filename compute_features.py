@@ -1,5 +1,4 @@
 """This module is used for computing social and map features for motion forecasting baselines.
-
 Example usage:
     $ python compute_features.py --data_dir ~/val/data 
         --feature_dir ~/val/features --mode val
@@ -89,7 +88,6 @@ def load_seq_save_features(
         save_dir: Directory where features for the current batch are to be saved
         map_features_utils_instance: MapFeaturesUtils instance
         social_features_utils_instance: SocialFeaturesUtils instance
-
     """
     count = 0
     args = parse_arguments()
@@ -144,7 +142,6 @@ def compute_features(
         social_features_utils_instance: SocialFeaturesUtils,
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Compute social and map features for the sequence.
-
     Args:
         seq_path (str): file path for the sequence whose features are to be computed.
         map_features_utils_instance: MapFeaturesUtils instance.
@@ -152,7 +149,6 @@ def compute_features(
     Returns:
         merged_features (numpy array): SEQ_LEN x NUM_FEATURES
         map_feature_helpers (dict): Dictionary containing helpers for map features
-
     """
     args = parse_arguments()
     df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
@@ -164,6 +160,7 @@ def compute_features(
         agent_ids = list(dict.fromkeys(agent_ids)) # Remove duplicates from IDs
 
         agents_social_features = dict() # Store of social feature computations for each 
+        all_social_features = dict()
         # NOTE: Have to include time stamp to the store information.
         
         for agent in agent_ids:
@@ -177,9 +174,17 @@ def compute_features(
             df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] != agent)] = "OTHER"
 
             # Compute social features
+
+            # here we need to calculate the agent track first
+            agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
+
+            # we also need a data structure we pass, so that we don't recalculate the distances here to the compute_social_features
+            # for now, lets say it is a dictionary with keys being the track_ids of two actors, use string keys here because tuple keys are slow in search
+            # mydict[ str(1)+" "+str(2) ] = 'some_float' here the value is the distance, hence float
+
             social_features = social_features_utils_instance.compute_social_features(
                 df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
-                RAW_DATA_FORMAT, agents_social_features)
+                RAW_DATA_FORMAT, all_social_features)
 
             # Store social features for that agent
             agents_social_features[agent] = social_features 
@@ -230,10 +235,8 @@ def compute_features(
 
 def merge_saved_features(batch_save_dir: str) -> None:
     """Merge features saved by parallel jobs.
-
     Args:
         batch_save_dir: Directory where features for all the batches are saved.
-
     """
     args = parse_arguments()
     feature_files = os.listdir(batch_save_dir)
@@ -273,6 +276,7 @@ if __name__ == "__main__":
         # Example command line input to test social feature changes: python compute_features.py --data_dir /Users/mithunjothiravi/Repos/Capstone_Social_LSTM/data --mode test --social_test True
         # NOTE: Once map code reflects the changes to the social computations, integrate it with the map features. 
         #   Look at compute_features func above to see what needs to get done.
+        # how can we share the social feature dictionary amongs all? maybe this is just taken care of automatically. Sth to think abt while debugging, might cause issues
         Parallel(n_jobs=-2)(delayed(load_seq_save_features)(
             i,
             sequences,
