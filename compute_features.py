@@ -24,6 +24,16 @@ from utils.social_features_utils import SocialFeaturesUtils
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
+    def str2bool(v):
+        if isinstance(v, bool):
+            return v
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--data_dir",
@@ -58,6 +68,9 @@ def parse_arguments() -> Any:
     parser.add_argument("--small",
                         action="store_true",
                         help="If true, a small subset of data is used.")
+    parser.add_argument("--social_test", type=str2bool, nargs='?',
+                        const=True, default=False,
+                        help="Activate test mode for social features compute.")
     return parser.parse_args()
 
 
@@ -125,7 +138,6 @@ def load_seq_save_features(
         f"{save_dir}/forecasting_features_{args.mode}_{start_idx}_{start_idx + args.batch_size}.pkl"
     )
 
-
 def compute_features(
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
@@ -148,10 +160,41 @@ def compute_features(
     # Get social and map features for the agent
     agent_track = df[df["OBJECT_TYPE"] == "AGENT"].values
 
-    # Social features are computed using only the observed trajectory
-    social_features = social_features_utils_instance.compute_social_features(
-        df, agent_track, args.obs_len, args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT)
+    if args.social_test:
+
+        agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
+        agents_social_features = dict() # Store of social feature computations for each 
+        
+        for agent in agent_ids:
+            # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
+
+            # Indexing a DataFrame returns a reference to the initial DataFrame. Thus, changing the subset will change the initial DataFrame. Thus, you'd want to use the copy if you want to make sure the initial DataFrame shouldn't change.
+            df_copy = df.copy()
+
+            # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
+            df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] == agent)] = "AGENT"
+            df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] != agent)] = "OTHER"
+
+            # Compute social features
+            social_features = social_features_utils_instance.compute_social_features(
+                df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
+                RAW_DATA_FORMAT)
+
+            # Store social features for that agent
+            agents_social_features[agent] = social_features 
+
+        print("Data fp: {} \n Computed social feature: {}\n".format(seq_path, agents_social_features))
+
+        # NOTE: Debug remove
+        # NOTE: Still unfinished, need to consider the merger of this new datastructure with the map information below
+        import sys
+        sys.exit("Test in progress") # Remove this once you are done debugging
+
+    else:
+        # Social features are computed using only the observed trajectory
+        social_features = social_features_utils_instance.compute_social_features(
+            df, agent_track, args.obs_len, args.obs_len + args.pred_len,
+            RAW_DATA_FORMAT)
 
     # agent_track will be used to compute n-t distances for future trajectory,
     # using centerlines obtained from observed trajectory
@@ -221,15 +264,27 @@ if __name__ == "__main__":
 
     num_sequences = _FEATURES_SMALL_SIZE if args.small else len(sequences)
 
-    Parallel(n_jobs=-2)(delayed(load_seq_save_features)(
-        i,
-        sequences,
-        temp_save_dir,
-        map_features_utils_instance,
-        social_features_utils_instance,
-    ) for i in range(0, num_sequences, args.batch_size))
-    merge_saved_features(temp_save_dir)
-    shutil.rmtree(temp_save_dir)
+    if args.social_test: # NOTE: For testing purposes skip the merge_saved_features step.
+        # Example command line input to test social feature changes: python compute_features.py --data_dir /Users/mithunjothiravi/Repos/Capstone_Social_LSTM/data --mode test --social_test True
+        # NOTE: Once map code reflects the changes to the social computations, integrate it with the map features. 
+        #   Look at compute_features func above to see what needs to get done.
+        Parallel(n_jobs=-2)(delayed(load_seq_save_features)(
+            i,
+            sequences,
+            temp_save_dir,
+            map_features_utils_instance,
+            social_features_utils_instance,
+        ) for i in range(0, num_sequences, args.batch_size))
+    else: # Perform regular script behaviour
+        Parallel(n_jobs=-2)(delayed(load_seq_save_features)(
+            i,
+            sequences,
+            temp_save_dir,
+            map_features_utils_instance,
+            social_features_utils_instance,
+        ) for i in range(0, num_sequences, args.batch_size))
+        merge_saved_features(temp_save_dir)
+        shutil.rmtree(temp_save_dir)
 
     print(
         f"Feature computation for {args.mode} set completed in {(time.time()-start)/60.0} mins"

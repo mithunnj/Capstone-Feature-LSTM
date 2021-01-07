@@ -128,7 +128,7 @@ class SocialFeaturesUtils:
         return padded_track_array
 
     def filter_tracks(self, seq_df: pd.DataFrame, obs_len: int,
-                      raw_data_format: Dict[str, int]) -> np.ndarray:
+                      raw_data_format: Dict[str, int], agents_social_features = None) -> np.ndarray:
         """Pad tracks which don't last throughout the sequence. Also, filter out non-relevant tracks.
 
         Args:
@@ -158,6 +158,10 @@ class SocialFeaturesUtils:
 
             # Check if the track is stationary
             if self.get_is_track_stationary(group_data):
+                continue
+
+            # Check if social features has already been computed for agent-actor pair in dataset 
+            if agents_social_features and group_name in agents_social_features:
                 continue
 
             padded_track_array = self.pad_track(group_data, seq_timestamps,
@@ -366,6 +370,7 @@ class SocialFeaturesUtils:
             obs_len: int,
             seq_len: int,
             raw_data_format: Dict[str, int],
+            agents_social_features = None
     ) -> np.ndarray:
         """Compute social features for the given sequence.
 
@@ -398,7 +403,7 @@ class SocialFeaturesUtils:
 
         # Filter out non-relevant tracks
         social_tracks_obs = self.filter_tracks(df_obs, obs_len,
-                                               raw_data_format)
+                                               raw_data_format, agents_social_features)
 
         # Get minimum following distance in front and back
         min_distance_front_and_back_obs = self.get_min_distance_front_and_back(
