@@ -1,5 +1,9 @@
 [![Python 3.7](https://img.shields.io/badge/python-3.7-blue.svg)](https://www.python.org/downloads/release/python-370/)
 
+# Capstone Social LSTM project
+
+This repo was ported over from the Argoverse Motion Forecasting repo. All the original README notes from the Argoverse repo can be found below.
+
 
 # Argoverse Motion Forecasting Baselines
 
