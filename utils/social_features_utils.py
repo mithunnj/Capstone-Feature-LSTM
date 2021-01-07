@@ -30,12 +30,10 @@ class SocialFeaturesUtils:
 
     def compute_velocity(self, track_df: pd.DataFrame) -> List[float]:
         """Compute velocities for the given track.
-
         Args:
             track_df (pandas Dataframe): Data for the track
         Returns:
             vel (list of float): Velocity at each timestep
-
         """
         x_coord = track_df["X"].values
         y_coord = track_df["Y"].values
@@ -52,12 +50,10 @@ class SocialFeaturesUtils:
 
     def get_is_track_stationary(self, track_df: pd.DataFrame) -> bool:
         """Check if the track is stationary.
-
         Args:
             track_df (pandas Dataframe): Data for the track
         Return:
             _ (bool): True if track is stationary, else False 
-
         """
         vel = self.compute_velocity(track_df)
         sorted_vel = sorted(vel)
@@ -71,14 +67,12 @@ class SocialFeaturesUtils:
             raw_data_format: Dict[str, int],
     ) -> np.ndarray:
         """Handle the case where the object exited and then entered the frame but still retains the same track id. It'll be a rare case.
-
         Args:
             track_array (numpy array): Padded data for the track
             seq_timestamps (numpy array): All timestamps in the sequence
             raw_data_format (Dict): Format of the sequence
         Returns:
             filled_track (numpy array): Track data filled with missing timestamps
-
         """
         curr_idx = 0
         filled_track = np.empty((0, track_array.shape[1]))
@@ -96,7 +90,6 @@ class SocialFeaturesUtils:
             raw_data_format: Dict[str, int],
     ) -> np.ndarray:
         """Pad incomplete tracks.
-
         Args:
             track_df (Dataframe): Dataframe for the track
             seq_timestamps (numpy array): All timestamps in the sequence
@@ -104,7 +97,6 @@ class SocialFeaturesUtils:
             raw_data_format (Dict): Format of the sequence
         Returns:
                 padded_track_array (numpy array): Track data padded in front and back
-
         """
         track_vals = track_df.values
         track_timestamps = track_df["TIMESTAMP"].values
@@ -128,16 +120,14 @@ class SocialFeaturesUtils:
         return padded_track_array
 
     def filter_tracks(self, seq_df: pd.DataFrame, obs_len: int,
-                      raw_data_format: Dict[str, int], agents_social_features = None) -> np.ndarray:
+                      raw_data_format: Dict[str, int]) -> np.ndarray:
         """Pad tracks which don't last throughout the sequence. Also, filter out non-relevant tracks.
-
         Args:
             seq_df (pandas Dataframe): Dataframe containing all the tracks in the sequence
             obs_len (int): Length of observed trajectory
             raw_data_format (Dict): Format of the sequence
         Returns:
             social_tracks (numpy array): Array of relevant tracks
-
         """
         social_tracks = np.empty((0, obs_len, len(raw_data_format)))
 
@@ -160,10 +150,6 @@ class SocialFeaturesUtils:
             if self.get_is_track_stationary(group_data):
                 continue
 
-            # Check if social features has already been computed for agent-actor pair in dataset 
-            if agents_social_features and group_name in agents_social_features.keys():
-                continue
-
             padded_track_array = self.pad_track(group_data, seq_timestamps,
                                                 obs_len,
                                                 raw_data_format).reshape(
@@ -180,14 +166,12 @@ class SocialFeaturesUtils:
             raw_data_format: Dict[str, int],
     ) -> Optional[str]:
         """Check if the neighbor is in front or back of the track.
-
         Args:
             track (numpy array): Track data
             neigh_x (float): Neighbor x coordinate
             neigh_y (float): Neighbor y coordinate
         Returns:
             _ (str): 'front' if in front, 'back' if in back
-
         """
         # We don't have heading information. So we need at least 2 coordinates to determine that.
         # Here, front and back is determined wrt to last 2 coordinates of the track
@@ -243,7 +227,6 @@ class SocialFeaturesUtils:
             viz=False,
     ) -> np.ndarray:
         """Get minimum distance of the tracks in front and in back.
-
         Args:
             agent_track (numpy array): Data for the agent track
             social_tracks (numpy array): Array of relevant tracks
@@ -252,7 +235,6 @@ class SocialFeaturesUtils:
             viz (bool): Visualize tracks
         Returns:
             min_distance_front_and_back (numpy array): obs_len x 2, minimum front and back distances
-
         """
         min_distance_front_and_back = np.full(
             (obs_len, 2), self.DEFAULT_MIN_DIST_FRONT_AND_BACK)
@@ -331,7 +313,6 @@ class SocialFeaturesUtils:
             raw_data_format: Dict[str, int],
     ) -> np.ndarray:
         """Get minimum distance of the tracks in front and back.
-
         Args:
             agent_track (numpy array): Data for the agent track
             social_tracks (numpy array): Array of relevant tracks
@@ -339,7 +320,6 @@ class SocialFeaturesUtils:
             raw_data_format (Dict): Format of the sequence
         Returns:
             num_neighbors (numpy array): Number of neighbors at each timestep
-
         """
         num_neighbors = np.full((obs_len, 1), 0)
 
@@ -370,14 +350,12 @@ class SocialFeaturesUtils:
             obs_len: int,
             seq_len: int,
             raw_data_format: Dict[str, int],
-            agents_social_features = None
+            all_social_features: Dict[str, float],
     ) -> np.ndarray:
         """Compute social features for the given sequence.
-
         Social features are meant to capture social context. 
         Here we use minimum distance to the vehicle in front, to the vehicle in back, 
         and number of neighbors as social features.
-
         Args:
             df (pandas Dataframe): Dataframe containing all the tracks in the sequence
             agent_track (numpy array): Data for the agent track
@@ -386,8 +364,9 @@ class SocialFeaturesUtils:
             raw_data_format (Dict): Format of the sequence
         Returns:
             social_features (numpy array): Social features for the agent track
-
         """
+        # from this point on, we gotta modify the called functions so that they utilize the all_social_features, and if they cant found the info, they populate it.
+
         agent_ts = np.sort(np.unique(df["TIMESTAMP"].values))
 
         if agent_ts.shape[0] == obs_len:
@@ -403,7 +382,7 @@ class SocialFeaturesUtils:
 
         # Filter out non-relevant tracks
         social_tracks_obs = self.filter_tracks(df_obs, obs_len,
-                                               raw_data_format, agents_social_features)
+                                               raw_data_format)
 
         # Get minimum following distance in front and back
         min_distance_front_and_back_obs = self.get_min_distance_front_and_back(
