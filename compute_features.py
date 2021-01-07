@@ -157,13 +157,14 @@ def compute_features(
     args = parse_arguments()
     df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
 
-    # Get social and map features for the agent
-    agent_track = df[df["OBJECT_TYPE"] == "AGENT"].values
 
     if args.social_test:
 
         agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
+        agent_ids = list(dict.fromkeys(agent_ids)) # Remove duplicates from IDs
+
         agents_social_features = dict() # Store of social feature computations for each 
+        # NOTE: Have to include time stamp to the store information.
         
         for agent in agent_ids:
             # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
@@ -178,7 +179,7 @@ def compute_features(
             # Compute social features
             social_features = social_features_utils_instance.compute_social_features(
                 df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
-                RAW_DATA_FORMAT)
+                RAW_DATA_FORMAT, agents_social_features)
 
             # Store social features for that agent
             agents_social_features[agent] = social_features 
@@ -191,6 +192,10 @@ def compute_features(
         sys.exit("Test in progress") # Remove this once you are done debugging
 
     else:
+
+        # Get social and map features for the agent
+        agent_track = df[df["OBJECT_TYPE"] == "AGENT"].values
+
         # Social features are computed using only the observed trajectory
         social_features = social_features_utils_instance.compute_social_features(
             df, agent_track, args.obs_len, args.obs_len + args.pred_len,

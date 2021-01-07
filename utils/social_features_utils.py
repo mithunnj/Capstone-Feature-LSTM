@@ -161,7 +161,7 @@ class SocialFeaturesUtils:
                 continue
 
             # Check if social features has already been computed for agent-actor pair in dataset 
-            if agents_social_features and group_name in agents_social_features:
+            if agents_social_features and group_name in agents_social_features.keys():
                 continue
 
             padded_track_array = self.pad_track(group_data, seq_timestamps,
