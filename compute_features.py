@@ -160,9 +160,12 @@ def compute_features(
         agent_ids = list(dict.fromkeys(agent_ids)) # Remove duplicates from IDs
 
         agents_social_features = dict() # Store of social feature computations for each 
-        all_social_features = dict()
+        all_distances = dict()
         # NOTE: Have to include time stamp to the store information.
         
+        # check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
+        
+
         for agent in agent_ids:
             # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
@@ -170,6 +173,10 @@ def compute_features(
             df_copy = df.copy()
 
             # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
+            ### BIG ISSUE HERE, need to make sure we have enough sequence length while defining a TRACK_ID as AGENT 
+            ### sth like number of track_id associated values == (obs_len)
+
+
             df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] == agent)] = "AGENT"
             df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] != agent)] = "OTHER"
 
@@ -184,7 +191,7 @@ def compute_features(
 
             social_features = social_features_utils_instance.compute_social_features(
                 df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
-                RAW_DATA_FORMAT, all_social_features)
+                RAW_DATA_FORMAT, all_distances)
 
             # Store social features for that agent
             agents_social_features[agent] = social_features 
@@ -208,54 +215,54 @@ def compute_features(
 
     # agent_track will be used to compute n-t distances for future trajectory,
     # using centerlines obtained from observed trajectory
-    map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-        agent_track,
-        args.obs_len,
-        args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT,
-        args.mode,
-    )
+    # map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
+    #     agent_track,
+    #     args.obs_len,
+    #     args.obs_len + args.pred_len,
+    #     RAW_DATA_FORMAT,
+    #     args.mode,
+    # )
 
-    # Combine social and map features
+    # # Combine social and map features
 
-    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    if agent_track.shape[0] == args.obs_len:
-        agent_track_seq = np.full(
-            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-        agent_track_seq[:args.obs_len] = agent_track
-        merged_features = np.concatenate(
-            (agent_track_seq, social_features, map_features), axis=1)
-    else:
-        merged_features = np.concatenate(
-            (agent_track, social_features, map_features), axis=1)
+    # # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
+    # # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
+    # if agent_track.shape[0] == args.obs_len:
+    #     agent_track_seq = np.full(
+    #         (args.obs_len + args.pred_len, agent_track.shape[1]), None)
+    #     agent_track_seq[:args.obs_len] = agent_track
+    #     merged_features = np.concatenate(
+    #         (agent_track_seq, social_features, map_features), axis=1)
+    # else:
+    #     merged_features = np.concatenate(
+    #         (agent_track, social_features, map_features), axis=1)
 
-    return merged_features, map_feature_helpers
+    # return merged_features, map_feature_helpers
 
 
-def merge_saved_features(batch_save_dir: str) -> None:
-    """Merge features saved by parallel jobs.
-    Args:
-        batch_save_dir: Directory where features for all the batches are saved.
-    """
-    args = parse_arguments()
-    feature_files = os.listdir(batch_save_dir)
-    all_features = []
-    for feature_file in feature_files:
-        if not feature_file.endswith(".pkl") or args.mode not in feature_file:
-            continue
-        file_path = f"{batch_save_dir}/{feature_file}"
-        df = pd.read_pickle(file_path)
-        all_features.append(df)
+# def merge_saved_features(batch_save_dir: str) -> None:
+#     """Merge features saved by parallel jobs.
+#     Args:
+#         batch_save_dir: Directory where features for all the batches are saved.
+#     """
+#     args = parse_arguments()
+#     feature_files = os.listdir(batch_save_dir)
+#     all_features = []
+#     for feature_file in feature_files:
+#         if not feature_file.endswith(".pkl") or args.mode not in feature_file:
+#             continue
+#         file_path = f"{batch_save_dir}/{feature_file}"
+#         df = pd.read_pickle(file_path)
+#         all_features.append(df)
 
-        # Remove the batch file
-        os.remove(file_path)
+#         # Remove the batch file
+#         os.remove(file_path)
 
-    all_features_df = pd.concat(all_features, ignore_index=True)
+#     all_features_df = pd.concat(all_features, ignore_index=True)
 
-    # Save the features for all the sequences into a single file
-    all_features_df.to_pickle(
-        f"{args.feature_dir}/forecasting_features_{args.mode}.pkl")
+#     # Save the features for all the sequences into a single file
+#     all_features_df.to_pickle(
+#         f"{args.feature_dir}/forecasting_features_{args.mode}.pkl")
 
 
 if __name__ == "__main__":
