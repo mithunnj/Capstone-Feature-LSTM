@@ -147,7 +147,7 @@ def compute_vel_track(
             av_track: np.ndarray,
             obs_len: int,) -> List[float]:
     i = 0
-    av_velocities = [None] * obs_len
+    av_velocities = [None] * (obs_len - 1)
     while (i != range(obs_len) - 1):
         # Agent coordinates, to find dx, dy
         av_x_t1, av_y_t1 = (
@@ -244,6 +244,7 @@ def compute_features(
 
             i = 0
             while (i != range(args.obs_len) - 1):
+
                 # Agent coordinates
                 agent_x_t1, agent_y_t1 = (
                     current_agent_track_obs[i, raw_data_format["X"]],
@@ -253,7 +254,25 @@ def compute_features(
                     current_agent_track_obs[i+1, raw_data_format["X"]],
                     current_agent_track_obs[i+1, raw_data_format["Y"]],
                 )
-                
+
+                # timestamps to find dt
+                time_t1 = (
+                    current_agent_track_obs[i, raw_data_format["TIMESTAMP"]],
+                )
+                time_t2 = (
+                    current_agent_track_obs[i+1, raw_data_format["TIMESTAMP"]],
+                )
+
+                # could use the velocity fnction here, but that will add another loop, this is more efficient probably.
+                vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t2)
+                vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t2)
+
+                # calculate instantaneous velocity.
+                agent_inst_velo = np.sqrt(vel_x**2 + vel_y**2)
+
+                # need to define a function which creates the boxes given av coords, agent coords, and both velocities. call it like:
+                # create_safezones(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_track[i+1, raw_data_format["X"]], av_track[i+1, raw_data_format["Y"]])
+
                 i += 1
 
 
