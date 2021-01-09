@@ -138,6 +138,48 @@ def load_seq_save_features(
         f"{save_dir}/forecasting_features_{args.mode}_{start_idx}_{start_idx + args.batch_size}.pkl"
     )
 
+
+
+###########find_velocities of a given track,  returns an array of velocities. should be optimized for python via numpy or sth else, 
+########### or we can move to C entirely. for now, we are only concerned with finding how many agents we are dropping
+def compute_vel_track(            
+            self,
+            av_track: np.ndarray,
+            obs_len: int,) -> List[float]:
+    i = 0
+    av_velocities = [None] * obs_len
+    while (i != range(obs_len) - 1):
+        # Agent coordinates, to find dx, dy
+        av_x_t1, av_y_t1 = (
+            av_track[i, raw_data_format["X"]],
+            av_track[i, raw_data_format["Y"]],
+        )
+        av_x_t2, av_y_t2 = (
+            av_track[i+1, raw_data_format["X"]],
+            av_track[i+1, raw_data_format["Y"]],
+        )
+
+        # timestamps to find dt
+        time_t1 = (
+            av_track[i, raw_data_format["TIMESTAMP"]],
+        )
+        time_t2 = (
+            av_track[i+1, raw_data_format["TIMESTAMP"]],
+        )
+
+        # find velocities
+        vel_x = (av_x_t2 - av_x_t1)/(time_t2 - time_t2)
+        vel_y = (av_y_t2 - av_y_t1)/(time_t2 - time_t2)
+
+        av_velocities[i] = np.sqrt(vel_x**2 + vel_y**2)
+
+        i += 1
+
+    return av_velocities
+
+
+
+
 def compute_features(
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
@@ -165,14 +207,66 @@ def compute_features(
         
         ## Check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
         
-        # Identify TRACK_ID for AV from dataframe information
+        # First, identify TRACK_ID for AV from dataframe information, not sure this is needed tho?
         av_id = df.loc[df['OBJECT_TYPE'] == 'AV', 'TRACK_ID'].iloc[0]
 
-        # Remove all irrelevant agents that do not have intersecting bounding regions with AV
+        # here first find the AV track array
+        av_track = df_copy[df_copy["OBJECT_TYPE"] == "AV"].values
+
+        # get velocities
+        av_velocities = compute_vel_track(av_track, args.obs_len)
+       
+
+        # Remove all irrelevant agents that do not have overlapping bounding regions with AV
+        drop_counter = 0
         for agent in agent_ids:
-            if doOverlap(av_id, agent):
+            # here loop thru the agent track id's and get their tracks, then loop thru these x,y values to first compute velocities, 
+            # then from the velocities, construct the boxes at every timestep for the current agent and then the AV, to compare overlap.
+            # if any overlap exists, continue
+            # make a counter to show how many we dropped, tune it to drop enough if we have very few dropped.
+
+
+            # make sure agent track is same as the observed time length, if not pad it with zeros
+            current_agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
+            agent_ts = np.sort(np.unique(df_copy["TIMESTAMP"].values))
+
+            if agent_ts.shape[0] == args.obs_len:
+                df_obs = df_copy
+                current_agent_track_obs = current_agent_track
+
+            else:
+                # Get obs dataframe and agent track
+                df_obs = df_copy[df_copy["TIMESTAMP"] < agent_ts[args.obs_len]]
+                assert (np.unique(df_obs["TIMESTAMP"].values).shape[0] == args.obs_len
+                        ), "Obs len mismatch"
+                current_agent_track_obs = current_agent_track[:args.obs_len]
+
+
+            i = 0
+            while (i != range(args.obs_len) - 1):
+                # Agent coordinates
+                agent_x_t1, agent_y_t1 = (
+                    current_agent_track_obs[i, raw_data_format["X"]],
+                    current_agent_track_obs[i, raw_data_format["Y"]],
+                )
+                agent_x_t2, agent_y_t2 = (
+                    current_agent_track_obs[i+1, raw_data_format["X"]],
+                    current_agent_track_obs[i+1, raw_data_format["Y"]],
+                )
+                
+                i += 1
+
+
+            # Not sure if this is legal to do, removing the iterated object while still iterating? Maybe create a list and remove after the loop.
+            if not doOverlap(av_id, agent):
                 agent_ids.remove(agent)
-               
+                drop_counter += 1
+            # Also remove the AV from agent list, so that it is not changed to OTHER
+            if agent_id == av_id:
+                agent_ids.remove(agent)
+        
+
+
         for agent in agent_ids:
             # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
