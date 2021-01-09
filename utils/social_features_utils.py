@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+pd.options.mode.chained_assignment = None  # remove .loc warning print
 
 from utils.baseline_config import (
     PADDING_TYPE,

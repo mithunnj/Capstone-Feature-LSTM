@@ -14,11 +14,13 @@ import argparse
 from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
+pd.options.mode.chained_assignment = None  # remove .loc warning print
 import pickle as pkl
 
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
+from utils.capstone_utils import doOverlap
 
 
 def parse_arguments() -> Any:
@@ -153,7 +155,6 @@ def compute_features(
     args = parse_arguments()
     df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
 
-
     if args.social_test:
 
         agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
@@ -161,11 +162,17 @@ def compute_features(
 
         agents_social_features = dict() # Store of social feature computations for each 
         all_distances = dict()
-        # NOTE: Have to include time stamp to the store information.
         
-        # check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
+        ## Check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
         
+        # Identify TRACK_ID for AV from dataframe information
+        av_id = df.loc[df['OBJECT_TYPE'] == 'AV', 'TRACK_ID'].iloc[0]
 
+        # Remove all irrelevant agents that do not have intersecting bounding regions with AV
+        for agent in agent_ids:
+            if doOverlap(av_id, agent):
+                agent_ids.remove(agent)
+               
         for agent in agent_ids:
             # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
