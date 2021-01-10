@@ -14,13 +14,13 @@ import argparse
 from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
-pd.options.mode.chained_assignment = None  # remove .loc warning print
+# pd.options.mode.chained_assignment = None  # remove .loc warning print
 import pickle as pkl
 
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
-from utils.capstone_utils import doOverlap
+# from utils.capstone_utils import doOverlap
 
 
 def parse_arguments() -> Any:
@@ -206,6 +206,7 @@ def compute_features(
 
         # get velocities
         av_velocities = compute_vel_track(av_track, args.obs_len)
+        #print(av_velocities)
         
         # Remove all irrelevant agents that do not have overlapping bounding regions with AV
         drop_counter = 0
@@ -219,6 +220,7 @@ def compute_features(
             # make sure agent track is same as the observed time length, if not pad it with zeros
             current_agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
             agent_ts = np.sort(np.unique(df_copy["TIMESTAMP"].values))
+            #print(current_agent_track)
 
             if agent_ts.shape[0] == args.obs_len:
                 df_obs = df_copy
@@ -233,37 +235,30 @@ def compute_features(
 
 
             i = 0
-            while (i != range(args.obs_len) - 1):
+            for i in range(args.obs_len):
+                if (i < (args.obs_len-1)):
+            # while (i != range(args.obs_len - 1)):
 
-                # Agent coordinates
-                agent_x_t1, agent_y_t1 = (
-                    current_agent_track_obs[i, raw_data_format["X"]],
-                    current_agent_track_obs[i, raw_data_format["Y"]],
-                )
-                agent_x_t2, agent_y_t2 = (
-                    current_agent_track_obs[i+1, raw_data_format["X"]],
-                    current_agent_track_obs[i+1, raw_data_format["Y"]],
-                )
+                    # Agent coordinates
+                    agent_x_t1, agent_y_t1 = current_agent_track_obs[i, -3], current_agent_track_obs[i, -2]
+                    agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1, -3], current_agent_track_obs[i+1, -2]
 
-                # timestamps to find dt
-                time_t1 = (
-                    current_agent_track_obs[i, raw_data_format["TIMESTAMP"]],
-                )
-                time_t2 = (
-                    current_agent_track_obs[i+1, raw_data_format["TIMESTAMP"]],
-                )
+                    # timestamps to find dt
+                    time_t1 = float(current_agent_track_obs[i,0])
+                    time_t2 = float(current_agent_track_obs[i+1,0])
+                    # could use the velocity fnction here, but that will add another loop, this is more efficient probably.
+                    vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t1)
+                    vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t1)
 
-                # could use the velocity fnction here, but that will add another loop, this is more efficient probably.
-                vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t2)
-                vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t2)
+                    # calculate instantaneous velocity.
+                    agent_inst_velo = np.sqrt(vel_x**2 + vel_y**2)
 
-                # calculate instantaneous velocity.
-                agent_inst_velo = np.sqrt(vel_x**2 + vel_y**2)
+                    # need to define a function which creates the boxes given av coords, agent coords, and both velocities. call it like:
+                    # create_safezones(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_track[i+1, raw_data_format["X"]], av_track[i+1, raw_data_format["Y"]])
 
-                # need to define a function which creates the boxes given av coords, agent coords, and both velocities. call it like:
-                # create_safezones(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_track[i+1, raw_data_format["X"]], av_track[i+1, raw_data_format["Y"]])
-
-                i += 1
+                # i += 1
+                else:
+                    break
 
 
             # Not sure if this is legal to do, removing the iterated object while still iterating? Maybe create a list and remove after the loop.
@@ -304,7 +299,7 @@ def compute_features(
 
             social_features = social_features_utils_instance.compute_social_features(
                 df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
-                RAW_DATA_FORMAT, all_distances)
+                RAW_DATA_FORMAT)
 
             # Store social features for that agent
             agents_social_features[agent] = social_features 
@@ -328,54 +323,54 @@ def compute_features(
 
     # agent_track will be used to compute n-t distances for future trajectory,
     # using centerlines obtained from observed trajectory
-    # map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-    #     agent_track,
-    #     args.obs_len,
-    #     args.obs_len + args.pred_len,
-    #     RAW_DATA_FORMAT,
-    #     args.mode,
-    # )
+    map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
+        agent_track,
+        args.obs_len,
+        args.obs_len + args.pred_len,
+        RAW_DATA_FORMAT,
+        args.mode,
+    )
 
-    # # Combine social and map features
+    # Combine social and map features
 
-    # # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    # if agent_track.shape[0] == args.obs_len:
-    #     agent_track_seq = np.full(
-    #         (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-    #     agent_track_seq[:args.obs_len] = agent_track
-    #     merged_features = np.concatenate(
-    #         (agent_track_seq, social_features, map_features), axis=1)
-    # else:
-    #     merged_features = np.concatenate(
-    #         (agent_track, social_features, map_features), axis=1)
+    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
+    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
+    if agent_track.shape[0] == args.obs_len:
+        agent_track_seq = np.full(
+            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
+        agent_track_seq[:args.obs_len] = agent_track
+        merged_features = np.concatenate(
+            (agent_track_seq, social_features, map_features), axis=1)
+    else:
+        merged_features = np.concatenate(
+            (agent_track, social_features, map_features), axis=1)
 
-    # return merged_features, map_feature_helpers
+    return merged_features, map_feature_helpers
 
 
-# def merge_saved_features(batch_save_dir: str) -> None:
-#     """Merge features saved by parallel jobs.
-#     Args:
-#         batch_save_dir: Directory where features for all the batches are saved.
-#     """
-#     args = parse_arguments()
-#     feature_files = os.listdir(batch_save_dir)
-#     all_features = []
-#     for feature_file in feature_files:
-#         if not feature_file.endswith(".pkl") or args.mode not in feature_file:
-#             continue
-#         file_path = f"{batch_save_dir}/{feature_file}"
-#         df = pd.read_pickle(file_path)
-#         all_features.append(df)
+def merge_saved_features(batch_save_dir: str) -> None:
+    """Merge features saved by parallel jobs.
+    Args:
+        batch_save_dir: Directory where features for all the batches are saved.
+    """
+    args = parse_arguments()
+    feature_files = os.listdir(batch_save_dir)
+    all_features = []
+    for feature_file in feature_files:
+        if not feature_file.endswith(".pkl") or args.mode not in feature_file:
+            continue
+        file_path = f"{batch_save_dir}/{feature_file}"
+        df = pd.read_pickle(file_path)
+        all_features.append(df)
 
-#         # Remove the batch file
-#         os.remove(file_path)
+        # Remove the batch file
+        os.remove(file_path)
 
-#     all_features_df = pd.concat(all_features, ignore_index=True)
+    all_features_df = pd.concat(all_features, ignore_index=True)
 
-#     # Save the features for all the sequences into a single file
-#     all_features_df.to_pickle(
-#         f"{args.feature_dir}/forecasting_features_{args.mode}.pkl")
+    # Save the features for all the sequences into a single file
+    all_features_df.to_pickle(
+        f"{args.feature_dir}/forecasting_features_{args.mode}.pkl")
 
 
 if __name__ == "__main__":
