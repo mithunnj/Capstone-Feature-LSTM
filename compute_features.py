@@ -143,37 +143,30 @@ def load_seq_save_features(
 ###########find_velocities of a given track,  returns an array of velocities. should be optimized for python via numpy or sth else, 
 ########### or we can move to C entirely. for now, we are only concerned with finding how many agents we are dropping
 def compute_vel_track(            
-            self,
             av_track: np.ndarray,
-            obs_len: int,) -> List[float]:
-    i = 0
+            obs_len: int) -> List[float]:
     av_velocities = [None] * (obs_len - 1)
-    while (i != range(obs_len) - 1):
-        # Agent coordinates, to find dx, dy
-        av_x_t1, av_y_t1 = (
-            av_track[i, raw_data_format["X"]],
-            av_track[i, raw_data_format["Y"]],
-        )
-        av_x_t2, av_y_t2 = (
-            av_track[i+1, raw_data_format["X"]],
-            av_track[i+1, raw_data_format["Y"]],
-        )
 
-        # timestamps to find dt
-        time_t1 = (
-            av_track[i, raw_data_format["TIMESTAMP"]],
-        )
-        time_t2 = (
-            av_track[i+1, raw_data_format["TIMESTAMP"]],
-        )
+    for i in range(obs_len):
+        if (i < (obs_len-1)):
+            # Agent coordinates, to find dx, dy
+            ## Based on a single element of av_track np.ndarray in the form: ['315968204.20525765' '00000000-0000-0000-0000-000000000000' 'AV' 419.354293323178 1125.927382712982 'MIA']
+            av_x_t1, av_y_t1 = av_track[i, -3], av_track[i, -2]
 
-        # find velocities
-        vel_x = (av_x_t2 - av_x_t1)/(time_t2 - time_t2)
-        vel_y = (av_y_t2 - av_y_t1)/(time_t2 - time_t2)
+            av_x_t2, av_y_t2 = av_track[i+1, -3], av_track[i+1, -2]
 
-        av_velocities[i] = np.sqrt(vel_x**2 + vel_y**2)
+            # timestamps to find dt
+            time_t1 = float(av_track[i, 0])
+            time_t2 = float(av_track[i+1, 0])
 
-        i += 1
+            # find velocities
+            vel_x = (av_x_t2 - av_x_t1)/(time_t2 - time_t1)
+            vel_y = (av_y_t2 - av_y_t1)/(time_t2 - time_t1)
+
+            av_velocities[i] = np.sqrt(vel_x**2 + vel_y**2)
+        else:
+            break
+
 
     return av_velocities
 
@@ -206,17 +199,14 @@ def compute_features(
         all_distances = dict()
         
         ## Check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
+        df_copy = df.copy()
         
-        # First, identify TRACK_ID for AV from dataframe information, not sure this is needed tho?
-        av_id = df.loc[df['OBJECT_TYPE'] == 'AV', 'TRACK_ID'].iloc[0]
-
         # here first find the AV track array
         av_track = df_copy[df_copy["OBJECT_TYPE"] == "AV"].values
 
         # get velocities
         av_velocities = compute_vel_track(av_track, args.obs_len)
-       
-
+        
         # Remove all irrelevant agents that do not have overlapping bounding regions with AV
         drop_counter = 0
         for agent in agent_ids:
@@ -277,12 +267,15 @@ def compute_features(
 
 
             # Not sure if this is legal to do, removing the iterated object while still iterating? Maybe create a list and remove after the loop.
-            if not doOverlap(av_id, agent):
+            '''
+            # NOTE: This entire section needs to be re-done to reflect proper removal of agents based on bounding box overlap.
+            if not doOverlap(None, agent): #NOTE: Need to change the av_id parameter that you deleted earlier.
                 agent_ids.remove(agent)
                 drop_counter += 1
             # Also remove the AV from agent list, so that it is not changed to OTHER
-            if agent_id == av_id:
+            if agent_id == None: #NOTE: Need to change the av_id parameter that you deleted earlier.
                 agent_ids.remove(agent)
+            '''
         
 
 
@@ -290,7 +283,7 @@ def compute_features(
             # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
             # Indexing a DataFrame returns a reference to the initial DataFrame. Thus, changing the subset will change the initial DataFrame. Thus, you'd want to use the copy if you want to make sure the initial DataFrame shouldn't change.
-            df_copy = df.copy()
+            df_copy = df.copy() #NOTE: Is this copy of the data frame necessary ?
 
             # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
             ### BIG ISSUE HERE, need to make sure we have enough sequence length while defining a TRACK_ID as AGENT 
