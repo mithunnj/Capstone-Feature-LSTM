@@ -20,19 +20,8 @@ import pickle as pkl
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
-# from utils.capstone_utils import doOverlap
-
-
-drop_counter = 0
-agent_counter = 0
-
-def increment_drop():
-    global drop_counter
-    drop_counter = drop_counter+1
-
-def increment_agent():
-    global agent_counter
-    agent_counter = agent_counter+1
+import math
+import matplotlib.pyplot as plt
 
 
 def parse_arguments() -> Any:
@@ -85,7 +74,6 @@ def parse_arguments() -> Any:
                         const=True, default=False,
                         help="Activate test mode for social features compute.")
     return parser.parse_args()
-
 
 def load_seq_save_features(
         start_idx: int,
@@ -158,7 +146,8 @@ def load_seq_save_features(
 def compute_vel_track(            
             av_track: np.ndarray,
             obs_len: int) -> List[float]:
-    av_velocities = [None] * (obs_len - 1)
+    
+    av_params = list()
 
     for i in range(obs_len):
         if (i < (obs_len-1)):
@@ -176,21 +165,67 @@ def compute_vel_track(
             vel_x = (av_x_t2 - av_x_t1)/(time_t2 - time_t1)
             vel_y = (av_y_t2 - av_y_t1)/(time_t2 - time_t1)
 
-            av_velocities[i] = np.sqrt(vel_x**2 + vel_y**2)
+            av_inst_velo = math.sqrt(vel_x**2 + vel_y**2)
+           
+            # Store AV's x, y, vel for each timestep
+            info = {
+                    "x": av_x_t1,
+                    "y": av_y_t1,
+                    "vel": av_inst_velo
+                }
+
+            av_params.append(info)
         else:
             break
 
 
-    return av_velocities
+    return av_params
 
+def check_safezone_overlap(av_info, agent_info, default_radius=5, viz_regions=False):
+    '''
+    Input:
+        - av_info, agent_info <dict>: Contains the x,y coordinates and velocity magnitude of AV and agent.
+        - default_radius <int>: This will set the default radius of the safezone that is constructred around each actor.
+        - viz_region <bool>: This is for debugging purposes. If TRUE, this will safe a plot of the two actors with their safezone
 
-def check_safezone_overlap(agent_inst_velo: float, av_inst_velo: float, 
-                        agent_x: float, agent_y: float, 
-                        av_x: float, av_y: float) -> bool:
-    print (agent_inst_velo, av_inst_velo, agent_x, agent_y, av_x, av_y)
+    Output: 
+        - <bool>: If the two safezones intersect will return True otherwise False.
+    '''
 
+    # Option to visualize regions
+    if viz_regions:
 
+        #define circles
+        av_actual_circle = plt.Circle((av_info["x"], av_info["y"]), radius=av_info['vel'], color='r', fill=False)
+        av_min_circle = plt.Circle((av_info["x"], av_info["y"]), radius=default_radius, color='b', fill=False)
+        agent_actual_circle = plt.Circle((agent_info["x"], agent_info["y"]), radius=agent_info['vel'], color='r', fill=False)
+        agent_min_circle = plt.Circle((agent_info["x"], agent_info["y"]), radius=default_radius, color='b', fill=False)
 
+        fig, ax = plt.subplots() 
+        ax.cla() # clear things for fresh plot
+        ax.set_xlim( (av_info["x"] - 15 if av_info["x"] < agent_info["x"] else agent_info["x"] - 15), (av_info["x"] + 15 if av_info["x"] > agent_info["x"] else agent_info["x"] + 15) )
+        ax.set_ylim( (av_info["y"] - 15 if av_info["y"] < agent_info["y"] else agent_info["y"] - 15), (av_info["y"] + 15 if av_info["y"] > agent_info["y"] else agent_info["y"] + 15) )
+
+        # add actor coordinates to plot
+        ax.plot(av_info["x"], av_info["y"], "o", color="black")
+        ax.plot(agent_info["x"], agent_info["y"], "o", color="black")
+
+        #add circles to plot
+        plt.gca().add_artist(av_actual_circle)
+        plt.gca().add_artist(av_min_circle)
+        plt.gca().add_artist(agent_actual_circle)
+        plt.gca().add_artist(agent_min_circle)
+
+        fig.savefig('check_safezone_overlap.png')
+
+    # Set min radius based on velocity of AV and agent
+    av_vel = default_radius if av_info["vel"] < default_radius else av_info["vel"]
+    agent_vel = default_radius if agent_info["vel"] < default_radius else agent_info["vel"]
+
+    # Calculate interesection: Inspired by: https://stackoverflow.com/questions/8367512/how-do-i-detect-intersections-between-a-circle-and-any-other-circle-in-the-same
+    intersection_result = abs(av_vel - agent_vel) <= math.sqrt( ((av_info["x"] - agent_info["x"])**2) + ((av_info["y"] - agent_info["y"])**2) ) <= (av_vel + agent_vel)
+
+    return intersection_result
 
 def compute_features(
         seq_path: str,
@@ -212,14 +247,14 @@ def compute_features(
 
     if args.social_test:
         
-        
         agents_social_features = dict() # Store of social feature computations for each 
 
-        agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
-        agent_ids = list(dict.fromkeys(agent_ids)) # Remove duplicates from IDs
-        
-        df_copy = df.copy()
-        
+        initial_agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
+        initial_agent_ids = list(dict.fromkeys(initial_agent_ids)) # Remove duplicates from IDs
+        final_agent_ids = initial_agent_ids.copy() # This is the list of agents that will get removed from the filtering process below.
+        initial_count, final_count = len(initial_agent_ids), 0
+
+        df_copy = df.copy() # Copy dataframe to avoid changing the original data structure
 
         # Identify TRACK_ID for AV from dataframe information
         av_id = df_copy.loc[df['OBJECT_TYPE'] == 'AV', 'TRACK_ID'].iloc[0]
@@ -227,14 +262,13 @@ def compute_features(
         av_track = df_copy[df_copy["OBJECT_TYPE"] == "AV"].values
 
         # get velocities
-        av_velocities = compute_vel_track(av_track, args.obs_len)
-        #print(av_velocities)
+        av_params = compute_vel_track(av_track, args.obs_len)
         
         # Remove all irrelevant agents that do not have overlapping bounding regions with AV
+        initial_agent_ids.remove(av_id)
+        final_agent_ids.remove(av_id)
 
-        agent_ids.remove(av_id)
-        for agent in agent_ids:
-            increment_agent()
+        for agent in initial_agent_ids:
             # here loop thru the agent track id's and get their tracks, then loop thru these x,y values to first compute velocities, 
             # then from the velocities, construct the boxes at every timestep for the current agent and then the AV, to compare overlap.
             # if any overlap exists, continue
@@ -242,15 +276,12 @@ def compute_features(
 
 
             # make sure agent track is same as the observed time length, if not pad it with zeros
-            # current_agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
             current_agent_track = df_copy[df_copy["TRACK_ID"] == agent].values
             agent_ts = np.sort(np.unique(df_copy["TIMESTAMP"].values))
-            #print(current_agent_track)
 
             if agent_ts.shape[0] == args.obs_len:
                 df_obs = df_copy
                 current_agent_track_obs = current_agent_track
-
             else:
                 # Get obs dataframe and agent track
                 df_obs = df_copy[df_copy["TIMESTAMP"] < agent_ts[args.obs_len]]
@@ -259,73 +290,64 @@ def compute_features(
                 current_agent_track_obs = current_agent_track[:args.obs_len]
 
 
+            # Remove agent_id if there is not enough time stamped data, means that real time data does not have enough length for this actor,
+            # so lstm cannot make a prediction.
             if (len(current_agent_track_obs) < args.obs_len):
-                # add these to the ones that should be removed, means that real time data does not have enough length for this actor,
-                # so lstm cannot make a prediction.
-                increment_drop()
-                print("DROPP")
-                break
-            
-            # i from 0 to 19, gotta stop at 18?
-            for i in range(args.obs_len):
-                if (i < (args.obs_len-1)):
-                    # print ("iteration:")
-                    # print (i)
-                    # print(len(current_agent_track_obs))
-            # while (i != range(args.obs_len - 1)):
+                final_agent_ids.remove(agent)
+                
+                continue
 
-                    # Agent coordinates
-                    # print (current_agent_track_obs[i][-3], current_agent_track_obs[i][-2])
-                    # print (current_agent_track_obs[i, -3], current_agent_track_obs[i, -2])
-                    # print(current_agent_track_obs)
-                    agent_x_t1, agent_y_t1 = current_agent_track_obs[i][-3], current_agent_track_obs[i][-2]
-                    agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1][-3], current_agent_track_obs[i+1][-2]
-                    av_x_t2, av_y_t2 = av_track[i+1][-3], av_track[i+1][-2]
-                    # timestamps to find dt
-                    time_t1 = float(current_agent_track_obs[i,0])
-                    time_t2 = float(current_agent_track_obs[i+1,0])
-                    # could use the velocity fnction here, but that will add another loop, this is more efficient probably.
-                    vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t1)
-                    vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t1)
+            # i from 0 to 18 because i+1 increment for vel calculations will result in going beyond 0-19 range of tracks
+            agent_seq_overlap = list()
+            for i in range(0, (args.obs_len - 1)):
 
-                    # calculate instantaneous velocity.
-                    agent_inst_velo = np.sqrt(vel_x**2 + vel_y**2)
+                # Agent coordinates for two timesteps
+                agent_x_t1, agent_y_t1 = current_agent_track_obs[i][-3], current_agent_track_obs[i][-2]
+                agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1][-3], current_agent_track_obs[i+1][-2]
+                av_x_t2, av_y_t2 = av_track[i+1][-3], av_track[i+1][-2]
 
-                    # need to define a function which creates the boxes given av coords, agent coords, and both velocities. call it like:
-                    overlap = check_safezone_overlap(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_x_t2, av_y_t2)
-                    if (overlap == True):
-                        print("DROPP")
-                        increment_drop()
+                # timesteps to find dt
+                time_t1 = float(current_agent_track_obs[i,0])
+                time_t2 = float(current_agent_track_obs[i+1,0])
 
+                # calculate velocity for agent over two timesteps
+                vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t1)
+                vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t1)
 
+                # calculate instantaneous velocity.
+                agent_inst_velo = math.sqrt(vel_x**2 + vel_y**2)
 
-                    
-                    # here this will return true if the circles we created overlap, and for the ones that return true, we will delete them from our 
-                    # Also remove the AV from agent list at the end, so that it is not changed to OTHER
-                # i += 1
-                else:
-                    break
+                agent_params = {
+                    "x": agent_x_t1,
+                    "y": agent_y_t1,
+                    "vel": agent_inst_velo
+                }
+
+                # Check overlapping safezone regions between the AV and the agent for a timestep
+                overlap = check_safezone_overlap(av_params[i], agent_params, default_radius=1)
+                agent_seq_overlap.append(overlap) # For a single timestep in the sequence store the overlap result between the AV and the agent.
+
+            # If there was overlap between the AV and the agent at least once in the sequence, keep. Otherwise disregard agent.
+            if True not in agent_seq_overlap:
+                final_agent_ids.remove(agent)
+                
+            final_count = len(final_agent_ids)
 
 
-            # Not sure if this is legal to do, removing the iterated object while still iterating? Maybe create a list and remove after the loop.
-            '''
-            # NOTE: This entire section needs to be re-done to reflect proper removal of agents based on bounding box overlap.
-            if not doOverlap(None, agent): #NOTE: Need to change the av_id parameter that you deleted earlier.
-                agent_ids.remove(agent)
-                drop_counter += 1
-            # Also remove the AV from agent list, so that it is not changed to OTHER
-            if agent_id == None: #NOTE: Need to change the av_id parameter that you deleted earlier.
-                agent_ids.remove(agent)
-            '''
+        print("\nRESULTS: Filtering agents based on intersection safezones between AV and AGENT: \n")
+        print("Data filepath: {}".format(seq_path))
+        print("# of agents dropped: {}".format(final_count))
+        print("# of agents total: {}".format(initial_count))
+        print("(dropped #)/(total): {}".format( final_count / initial_count))
 
-        
+        return 
 
-
-        # for agent in agent_ids:
+        ## NOTE: Social features calculation was omitted for the Design Critique phase of the Capstone deliverable. 
+        # for agent in initial_agent_ids:
         #     # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
         #     # Indexing a DataFrame returns a reference to the initial DataFrame. Thus, changing the subset will change the initial DataFrame. Thus, you'd want to use the copy if you want to make sure the initial DataFrame shouldn't change.
-        #     df_copy = df.copy() #NOTE: Is this copy of the data frame necessary ?
+        #     df_copy = df.copy() 
 
         #     # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
         #     ### BIG ISSUE HERE, need to make sure we have enough sequence length while defining a TRACK_ID as AGENT 
@@ -352,11 +374,6 @@ def compute_features(
         #     agents_social_features[agent] = social_features
 
         # print("Data fp: {} \n Computed social feature: {}\n".format(seq_path, agents_social_features))
-
-        # NOTE: Debug remove
-        # NOTE: Still unfinished, need to consider the merger of this new datastructure with the map information below
-        # import sys
-        # sys.exit("Test in progress") # Remove this once you are done debugging
 
     else:
 
@@ -458,9 +475,6 @@ if __name__ == "__main__":
         ) for i in range(0, num_sequences, args.batch_size))
         merge_saved_features(temp_save_dir)
         shutil.rmtree(temp_save_dir)
-
-    print ("DROP, TOTAL")
-    print(drop_counter, agent_counter)
 
     print(
         f"Feature computation for {args.mode} set completed in {(time.time()-start)/60.0} mins"
