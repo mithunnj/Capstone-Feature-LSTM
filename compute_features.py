@@ -14,13 +14,25 @@ import argparse
 from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
-# pd.options.mode.chained_assignment = None  # remove .loc warning print
+pd.options.mode.chained_assignment = None  # remove .loc warning print
 import pickle as pkl
 
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
 # from utils.capstone_utils import doOverlap
+
+
+drop_counter = 0
+agent_counter = 0
+
+def increment_drop():
+    global drop_counter
+    drop_counter = drop_counter+1
+
+def increment_agent():
+    global agent_counter
+    agent_counter = agent_counter+1
 
 
 def parse_arguments() -> Any:
@@ -105,38 +117,39 @@ def load_seq_save_features(
         seq_id = int(seq.split(".")[0])
 
         # Compute social and map features
-        features, map_feature_helpers = compute_features(
+        #features, map_feature_helpers = compute_features(
+        compute_features(
             file_path, map_features_utils_instance,
             social_features_utils_instance)
         count += 1
-        data.append([
-            seq_id,
-            features,
-            map_feature_helpers["CANDIDATE_CENTERLINES"],
-            map_feature_helpers["ORACLE_CENTERLINE"],
-            map_feature_helpers["CANDIDATE_NT_DISTANCES"],
-        ])
+    #     data.append([
+    #         seq_id,
+    #         features,
+    #         map_feature_helpers["CANDIDATE_CENTERLINES"],
+    #         map_feature_helpers["ORACLE_CENTERLINE"],
+    #         map_feature_helpers["CANDIDATE_NT_DISTANCES"],
+    #     ])
 
-        print(
-            f"{args.mode}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        )
+    #     print(
+    #         f"{args.mode}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
+    #     )
 
-    data_df = pd.DataFrame(
-        data,
-        columns=[
-            "SEQUENCE",
-            "FEATURES",
-            "CANDIDATE_CENTERLINES",
-            "ORACLE_CENTERLINE",
-            "CANDIDATE_NT_DISTANCES",
-        ],
-    )
+    # data_df = pd.DataFrame(
+    #     data,
+    #     columns=[
+    #         "SEQUENCE",
+    #         "FEATURES",
+    #         "CANDIDATE_CENTERLINES",
+    #         "ORACLE_CENTERLINE",
+    #         "CANDIDATE_NT_DISTANCES",
+    #     ],
+    # )
 
     # Save the computed features for all the sequences in the batch as a single file
-    os.makedirs(save_dir, exist_ok=True)
-    data_df.to_pickle(
-        f"{save_dir}/forecasting_features_{args.mode}_{start_idx}_{start_idx + args.batch_size}.pkl"
-    )
+    # os.makedirs(save_dir, exist_ok=True)
+    # data_df.to_pickle(
+    #     f"{save_dir}/forecasting_features_{args.mode}_{start_idx}_{start_idx + args.batch_size}.pkl"
+    # )
 
 
 
@@ -171,13 +184,20 @@ def compute_vel_track(
     return av_velocities
 
 
+def check_safezone_overlap(agent_inst_velo: float, av_inst_velo: float, 
+                        agent_x: float, agent_y: float, 
+                        av_x: float, av_y: float) -> bool:
+    print (agent_inst_velo, av_inst_velo, agent_x, agent_y, av_x, av_y)
+
+
 
 
 def compute_features(
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
-) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+#) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+) -> None:
     """Compute social and map features for the sequence.
     Args:
         seq_path (str): file path for the sequence whose features are to be computed.
@@ -191,16 +211,18 @@ def compute_features(
     df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
 
     if args.social_test:
+        
+        
+        agents_social_features = dict() # Store of social feature computations for each 
 
         agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
         agent_ids = list(dict.fromkeys(agent_ids)) # Remove duplicates from IDs
-
-        agents_social_features = dict() # Store of social feature computations for each 
-        all_distances = dict()
         
-        ## Check if the track_id values, collide with the AV's track_id, if not dont include them in the loop.
         df_copy = df.copy()
         
+
+        # Identify TRACK_ID for AV from dataframe information
+        av_id = df_copy.loc[df['OBJECT_TYPE'] == 'AV', 'TRACK_ID'].iloc[0]
         # here first find the AV track array
         av_track = df_copy[df_copy["OBJECT_TYPE"] == "AV"].values
 
@@ -209,8 +231,10 @@ def compute_features(
         #print(av_velocities)
         
         # Remove all irrelevant agents that do not have overlapping bounding regions with AV
-        drop_counter = 0
+
+        agent_ids.remove(av_id)
         for agent in agent_ids:
+            increment_agent()
             # here loop thru the agent track id's and get their tracks, then loop thru these x,y values to first compute velocities, 
             # then from the velocities, construct the boxes at every timestep for the current agent and then the AV, to compare overlap.
             # if any overlap exists, continue
@@ -218,7 +242,8 @@ def compute_features(
 
 
             # make sure agent track is same as the observed time length, if not pad it with zeros
-            current_agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
+            # current_agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
+            current_agent_track = df_copy[df_copy["TRACK_ID"] == agent].values
             agent_ts = np.sort(np.unique(df_copy["TIMESTAMP"].values))
             #print(current_agent_track)
 
@@ -234,15 +259,28 @@ def compute_features(
                 current_agent_track_obs = current_agent_track[:args.obs_len]
 
 
-            i = 0
+            if (len(current_agent_track_obs) < args.obs_len):
+                # add these to the ones that should be removed, means that real time data does not have enough length for this actor,
+                # so lstm cannot make a prediction.
+                increment_drop()
+                print("DROPP")
+                break
+            
+            # i from 0 to 19, gotta stop at 18?
             for i in range(args.obs_len):
                 if (i < (args.obs_len-1)):
+                    # print ("iteration:")
+                    # print (i)
+                    # print(len(current_agent_track_obs))
             # while (i != range(args.obs_len - 1)):
 
                     # Agent coordinates
-                    agent_x_t1, agent_y_t1 = current_agent_track_obs[i, -3], current_agent_track_obs[i, -2]
-                    agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1, -3], current_agent_track_obs[i+1, -2]
-
+                    # print (current_agent_track_obs[i][-3], current_agent_track_obs[i][-2])
+                    # print (current_agent_track_obs[i, -3], current_agent_track_obs[i, -2])
+                    # print(current_agent_track_obs)
+                    agent_x_t1, agent_y_t1 = current_agent_track_obs[i][-3], current_agent_track_obs[i][-2]
+                    agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1][-3], current_agent_track_obs[i+1][-2]
+                    av_x_t2, av_y_t2 = av_track[i+1][-3], av_track[i+1][-2]
                     # timestamps to find dt
                     time_t1 = float(current_agent_track_obs[i,0])
                     time_t2 = float(current_agent_track_obs[i+1,0])
@@ -254,8 +292,16 @@ def compute_features(
                     agent_inst_velo = np.sqrt(vel_x**2 + vel_y**2)
 
                     # need to define a function which creates the boxes given av coords, agent coords, and both velocities. call it like:
-                    # create_safezones(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_track[i+1, raw_data_format["X"]], av_track[i+1, raw_data_format["Y"]])
+                    overlap = check_safezone_overlap(agent_inst_velo, av_velocities[i], agent_x_t2, agent_y_t2, av_x_t2, av_y_t2)
+                    if (overlap == True):
+                        print("DROPP")
+                        increment_drop()
 
+
+
+                    
+                    # here this will return true if the circles we created overlap, and for the ones that return true, we will delete them from our 
+                    # Also remove the AV from agent list at the end, so that it is not changed to OTHER
                 # i += 1
                 else:
                     break
@@ -271,45 +317,46 @@ def compute_features(
             if agent_id == None: #NOTE: Need to change the av_id parameter that you deleted earlier.
                 agent_ids.remove(agent)
             '''
+
         
 
 
-        for agent in agent_ids:
-            # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
+        # for agent in agent_ids:
+        #     # Setup pd datastructure to set agent as the OBJECT_TYPE = AGENT
 
-            # Indexing a DataFrame returns a reference to the initial DataFrame. Thus, changing the subset will change the initial DataFrame. Thus, you'd want to use the copy if you want to make sure the initial DataFrame shouldn't change.
-            df_copy = df.copy() #NOTE: Is this copy of the data frame necessary ?
+        #     # Indexing a DataFrame returns a reference to the initial DataFrame. Thus, changing the subset will change the initial DataFrame. Thus, you'd want to use the copy if you want to make sure the initial DataFrame shouldn't change.
+        #     df_copy = df.copy() #NOTE: Is this copy of the data frame necessary ?
 
-            # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
-            ### BIG ISSUE HERE, need to make sure we have enough sequence length while defining a TRACK_ID as AGENT 
-            ### sth like number of track_id associated values == (obs_len)
+        #     # Change the OBJECT_TYPE for all IDs matching the agent to the AGENT type, all others will be considered OTHER
+        #     ### BIG ISSUE HERE, need to make sure we have enough sequence length while defining a TRACK_ID as AGENT 
+        #     ### sth like number of track_id associated values == (obs_len)
 
 
-            df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] == agent)] = "AGENT"
-            df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] != agent)] = "OTHER"
+        #     df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] == agent)] = "AGENT"
+        #     df_copy["OBJECT_TYPE"].loc[(df_copy["TRACK_ID"] != agent)] = "OTHER"
 
-            # Compute social features
+        #     # Compute social features
 
-            # here we need to calculate the agent track first
-            agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
+        #     # here we need to calculate the agent track first
+        #     agent_track = df_copy[df_copy["OBJECT_TYPE"] == "AGENT"].values
 
-            # we also need a data structure we pass, so that we don't recalculate the distances here to the compute_social_features
-            # for now, lets say it is a dictionary with keys being the track_ids of two actors, use string keys here because tuple keys are slow in search
-            # mydict[ str(1)+" "+str(2) ] = 'some_float' here the value is the distance, hence float
+        #     # we also need a data structure we pass, so that we don't recalculate the distances here to the compute_social_features
+        #     # for now, lets say it is a dictionary with keys being the track_ids of two actors, use string keys here because tuple keys are slow in search
+        #     # mydict[ str(1)+" "+str(2) ] = 'some_float' here the value is the distance, hence float
 
-            social_features = social_features_utils_instance.compute_social_features(
-                df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
-                RAW_DATA_FORMAT)
+        #     social_features = social_features_utils_instance.compute_social_features(
+        #         df_copy, agent_track, args.obs_len, args.obs_len + args.pred_len,
+        #         RAW_DATA_FORMAT)
 
-            # Store social features for that agent
-            agents_social_features[agent] = social_features 
+        #     # Store social features for that agent
+        #     agents_social_features[agent] = social_features
 
-        print("Data fp: {} \n Computed social feature: {}\n".format(seq_path, agents_social_features))
+        # print("Data fp: {} \n Computed social feature: {}\n".format(seq_path, agents_social_features))
 
         # NOTE: Debug remove
         # NOTE: Still unfinished, need to consider the merger of this new datastructure with the map information below
-        import sys
-        sys.exit("Test in progress") # Remove this once you are done debugging
+        # import sys
+        # sys.exit("Test in progress") # Remove this once you are done debugging
 
     else:
 
@@ -321,31 +368,32 @@ def compute_features(
             df, agent_track, args.obs_len, args.obs_len + args.pred_len,
             RAW_DATA_FORMAT)
 
-    # agent_track will be used to compute n-t distances for future trajectory,
-    # using centerlines obtained from observed trajectory
-    map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-        agent_track,
-        args.obs_len,
-        args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT,
-        args.mode,
-    )
+    # # agent_track will be used to compute n-t distances for future trajectory,
+    # # using centerlines obtained from observed trajectory
+    # map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
+    #     agent_track,
+    #     args.obs_len,
+    #     args.obs_len + args.pred_len,
+    #     RAW_DATA_FORMAT,
+    #     args.mode,
+    # )
 
-    # Combine social and map features
+    # # Combine social and map features
 
-    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    if agent_track.shape[0] == args.obs_len:
-        agent_track_seq = np.full(
-            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-        agent_track_seq[:args.obs_len] = agent_track
-        merged_features = np.concatenate(
-            (agent_track_seq, social_features, map_features), axis=1)
-    else:
-        merged_features = np.concatenate(
-            (agent_track, social_features, map_features), axis=1)
+    # # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
+    # # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
+    # if agent_track.shape[0] == args.obs_len:
+    #     agent_track_seq = np.full(
+    #         (args.obs_len + args.pred_len, agent_track.shape[1]), None)
+    #     agent_track_seq[:args.obs_len] = agent_track
+    #     merged_features = np.concatenate(
+    #         (agent_track_seq, social_features, map_features), axis=1)
+    # else:
+    #     merged_features = np.concatenate(
+    #         (agent_track, social_features, map_features), axis=1)
 
-    return merged_features, map_feature_helpers
+    # return merged_features, map_feature_helpers
+    
 
 
 def merge_saved_features(batch_save_dir: str) -> None:
@@ -375,6 +423,7 @@ def merge_saved_features(batch_save_dir: str) -> None:
 
 if __name__ == "__main__":
     """Load sequences and save the computed features."""
+
     args = parse_arguments()
 
     start = time.time()
@@ -409,6 +458,9 @@ if __name__ == "__main__":
         ) for i in range(0, num_sequences, args.batch_size))
         merge_saved_features(temp_save_dir)
         shutil.rmtree(temp_save_dir)
+
+    print ("DROP, TOTAL")
+    print(drop_counter, agent_counter)
 
     print(
         f"Feature computation for {args.mode} set completed in {(time.time()-start)/60.0} mins"
