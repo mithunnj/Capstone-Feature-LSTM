@@ -22,6 +22,7 @@ from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
 import math
 import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.max_open_warning': 0})
 
 
 def parse_arguments() -> Any:
@@ -73,7 +74,55 @@ def parse_arguments() -> Any:
     parser.add_argument("--social_test", type=str2bool, nargs='?',
                         const=True, default=False,
                         help="Activate test mode for social features compute.")
+    parser.add_argument("--viz", type=str2bool, nargs='?',
+                        const=True, default=False,
+                        help="Activate test mode for social features compute.")
     return parser.parse_args()
+
+def viz_agent_info(df, seq_path, av_params, av_id, initial_agent_ids, removed_agent_ids):
+    '''
+    '''
+    def legend_without_duplicate_labels(ax):
+        handles, labels = ax.get_legend_handles_labels()
+        unique = [(h, l) for i, (h, l) in enumerate(zip(handles, labels)) if l not in labels[:i]]
+        ax.legend(*zip(*unique))
+
+    def gen_x_y(actor_id):
+        '''
+        '''
+        actor_info = df[df["TRACK_ID"] == actor_id].values[-1]
+        actor_x = actor_info[-3]
+        actor_y = actor_info[-2]
+
+        return actor_x, actor_y
+
+    fig, ax = plt.subplots() 
+
+    # Add AV location to plot 
+    ax.plot(av_params["x"], av_params["y"], "o", color="blue", label="AV")
+    #define circles
+    av_actual_circle = plt.Circle((av_params["x"], av_params["y"]), radius=av_params['vel'], color='r', fill=False)
+    av_min_circle = plt.Circle((av_params["x"], av_params["y"]), radius=10, color='b', fill=False)
+
+    for agent in initial_agent_ids:
+        agent_x, agent_y = gen_x_y(agent) 
+        if agent in removed_agent_ids:
+            ax.plot(agent_x, agent_y, "o", color="red", label="Dropped agent")
+        else:
+            ax.plot(agent_x, agent_y, "o", color="green", label="Kept agent")
+
+    #add circles to plot
+    #plt.gca().add_artist(av_actual_circle)
+    #plt.gca().add_artist(av_min_circle)
+
+    # Save plot 
+    ax.legend()
+    legend_without_duplicate_labels(ax)
+    fig.suptitle('{} Agent Info'.format(seq_path.split('/')[-1]))
+    filename = "{}_filter_agent_results.png".format(seq_path.split('.')[0])
+    fig.savefig(filename)
+
+    return
 
 def load_seq_save_features(
         start_idx: int,
@@ -216,13 +265,13 @@ def check_safezone_overlap(av_info, agent_info, time_diff, default_radius=1, viz
         plt.gca().add_artist(agent_actual_circle)
         plt.gca().add_artist(agent_min_circle)
 
-        fig.savefig('check_safezone_overlap.png')
+        fig.savefig(VISUALS_DIR + '/check_safezone_overlap.png')
 
     # Set min radius based on velocity of AV and agent
     av_vel = default_radius if av_info["vel"] < default_radius else av_info["vel"]
     agent_vel = default_radius if agent_info["vel"] < default_radius else agent_info["vel"]
 
-    # Calculate interesection: Inspired by: https://stackoverflow.com/questions/8367512/how-do-i-detect-intersections-between-a-circle-and-any-other-circle-in-the-same
+    # Calculate interesection: 
     intersection_result = math.sqrt( ((av_info["x"] - agent_info["x"])**2) + ((av_info["y"] - agent_info["y"])**2) ) <= ( (av_vel + agent_vel)*time_diff)
 
     return intersection_result
@@ -251,8 +300,7 @@ def compute_features(
 
         initial_agent_ids = df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
         initial_agent_ids = list(dict.fromkeys(initial_agent_ids)) # Remove duplicates from IDs
-        final_agent_ids = initial_agent_ids.copy() # This is the list of agents that will get removed from the filtering process below.
-        initial_count, final_count = len(initial_agent_ids), 0
+        removed_agent_ids = list()
 
         df_copy = df.copy() # Copy dataframe to avoid changing the original data structure
 
@@ -266,7 +314,7 @@ def compute_features(
         
         # Remove all irrelevant agents that do not have overlapping bounding regions with AV
         initial_agent_ids.remove(av_id)
-        final_agent_ids.remove(av_id)
+        initial_count, final_count = len(initial_agent_ids), 0
 
         for agent in initial_agent_ids:
             # here loop thru the agent track id's and get their tracks, then loop thru these x,y values to first compute velocities, 
@@ -293,8 +341,7 @@ def compute_features(
             # Remove agent_id if there is not enough time stamped data, means that real time data does not have enough length for this actor,
             # so lstm cannot make a prediction.
             if (len(current_agent_track_obs) < args.obs_len):
-                final_agent_ids.remove(agent)
-                
+                removed_agent_ids.append(agent)
                 continue
 
             # i from 0 to 18 because i+1 increment for vel calculations will result in going beyond 0-19 range of tracks
@@ -331,16 +378,18 @@ def compute_features(
 
             # If there was overlap between the AV and the agent at least once in the sequence, keep. Otherwise disregard agent.
             if agent_seq_overlap[-1] == False:
-                final_agent_ids.remove(agent)
+                removed_agent_ids.append(agent)
                 
-            final_count = len(final_agent_ids)
+            final_count = len(removed_agent_ids)
 
+            if args.viz:
+                viz_agent_info(df, seq_path, av_params[i], av_id, initial_agent_ids, removed_agent_ids)
 
         print("\nRESULTS: Filtering agents based on intersection safezones between AV and AGENT: \n")
         print("Data filepath: {}".format(seq_path))
-        print("# of agents dropped: {}".format(initial_count - final_count))
+        print("# of agents dropped: {}".format(final_count))
         print("# of agents total: {}".format(initial_count))
-        print("(dropped #)/(total): {}".format( (initial_count - final_count) / initial_count))
+        print("(dropped #)/(total): {}".format( (final_count) / initial_count))
 
         return 
 
