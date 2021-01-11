@@ -181,7 +181,7 @@ def compute_vel_track(
 
     return av_params
 
-def check_safezone_overlap(av_info, agent_info, default_radius=5, viz_regions=False):
+def check_safezone_overlap(av_info, agent_info, time_diff, default_radius=1, viz_regions=False):
     '''
     Input:
         - av_info, agent_info <dict>: Contains the x,y coordinates and velocity magnitude of AV and agent.
@@ -223,7 +223,7 @@ def check_safezone_overlap(av_info, agent_info, default_radius=5, viz_regions=Fa
     agent_vel = default_radius if agent_info["vel"] < default_radius else agent_info["vel"]
 
     # Calculate interesection: Inspired by: https://stackoverflow.com/questions/8367512/how-do-i-detect-intersections-between-a-circle-and-any-other-circle-in-the-same
-    intersection_result = abs(av_vel - agent_vel) <= math.sqrt( ((av_info["x"] - agent_info["x"])**2) + ((av_info["y"] - agent_info["y"])**2) ) <= (av_vel + agent_vel)
+    intersection_result = math.sqrt( ((av_info["x"] - agent_info["x"])**2) + ((av_info["y"] - agent_info["y"])**2) ) <= ( (av_vel + agent_vel)*time_diff)
 
     return intersection_result
 
@@ -299,36 +299,38 @@ def compute_features(
 
             # i from 0 to 18 because i+1 increment for vel calculations will result in going beyond 0-19 range of tracks
             agent_seq_overlap = list()
-            for i in range(0, (args.obs_len - 1)):
 
-                # Agent coordinates for two timesteps
-                agent_x_t1, agent_y_t1 = current_agent_track_obs[i][-3], current_agent_track_obs[i][-2]
-                agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1][-3], current_agent_track_obs[i+1][-2]
-                av_x_t2, av_y_t2 = av_track[i+1][-3], av_track[i+1][-2]
+            i = args.obs_len - 2
 
-                # timesteps to find dt
-                time_t1 = float(current_agent_track_obs[i,0])
-                time_t2 = float(current_agent_track_obs[i+1,0])
+            # Agent coordinates for two timesteps
+            agent_x_t1, agent_y_t1 = current_agent_track_obs[i][-3], current_agent_track_obs[i][-2]
+            agent_x_t2, agent_y_t2 = current_agent_track_obs[i+1][-3], current_agent_track_obs[i+1][-2]
+            av_x_t2, av_y_t2 = av_track[i+1][-3], av_track[i+1][-2]
 
-                # calculate velocity for agent over two timesteps
-                vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t1)
-                vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t1)
+            # timesteps to find dt
+            time_t1 = float(current_agent_track_obs[i,0])
+            time_t2 = float(current_agent_track_obs[i+1,0])
 
-                # calculate instantaneous velocity.
-                agent_inst_velo = math.sqrt(vel_x**2 + vel_y**2)
+            # calculate velocity for agent over two timesteps
+            vel_x = (agent_x_t2 - agent_x_t1)/(time_t2 - time_t1)
+            vel_y = (agent_y_t2 - agent_y_t1)/(time_t2 - time_t1)
 
-                agent_params = {
-                    "x": agent_x_t1,
-                    "y": agent_y_t1,
-                    "vel": agent_inst_velo
-                }
+            # calculate instantaneous velocity.
+            agent_inst_velo = math.sqrt(vel_x**2 + vel_y**2)
 
-                # Check overlapping safezone regions between the AV and the agent for a timestep
-                overlap = check_safezone_overlap(av_params[i], agent_params, default_radius=1)
-                agent_seq_overlap.append(overlap) # For a single timestep in the sequence store the overlap result between the AV and the agent.
+            agent_params = {
+                "x": agent_x_t1,
+                "y": agent_y_t1,
+                "vel": agent_inst_velo
+            }
+
+            # Check overlapping safezone regions between the AV and the agent for a timestep
+            # [True, False, False] -> [False ]
+            overlap = check_safezone_overlap(av_params[i], agent_params, time_diff=(args.pred_len*(time_t2-time_t1)))
+            agent_seq_overlap.append(overlap) # For a single timestep in the sequence store the overlap result between the AV and the agent.
 
             # If there was overlap between the AV and the agent at least once in the sequence, keep. Otherwise disregard agent.
-            if True not in agent_seq_overlap:
+            if agent_seq_overlap[-1] == False:
                 final_agent_ids.remove(agent)
                 
             final_count = len(final_agent_ids)
@@ -336,9 +338,9 @@ def compute_features(
 
         print("\nRESULTS: Filtering agents based on intersection safezones between AV and AGENT: \n")
         print("Data filepath: {}".format(seq_path))
-        print("# of agents dropped: {}".format(final_count))
+        print("# of agents dropped: {}".format(initial_count - final_count))
         print("# of agents total: {}".format(initial_count))
-        print("(dropped #)/(total): {}".format( final_count / initial_count))
+        print("(dropped #)/(total): {}".format( (initial_count - final_count) / initial_count))
 
         return 
 
