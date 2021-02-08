@@ -74,6 +74,8 @@ def main():
     data = load_lyft_data()
     scene_count = 0
 
+    unknown_count = 0
+    total_count = 0
     for scene in data.scenes: # Each Lyft scene is 25 seconds long
 
         fp_time = int(time.time()) # Timestamp will be used to store all the Lyft data relevant to this scene to a common directory (see write_csv function)
@@ -85,7 +87,14 @@ def main():
         frame_start_ind, frame_end_ind = scene['frame_index_interval'][0], scene['frame_index_interval'][-1]
 
         # Loop through each frame, and fetch timestamp plus agent information
+        count = 0
+        current_unknown = 0
+        current_total = 0
         for frame_ind in range(frame_start_ind, frame_end_ind):
+            # uncomment to turn on 5 second scene extraction
+            # count += 1
+            # if count == 50:
+            #     break
             timestamp = data.frames[frame_ind]['timestamp']/TIME_CORRECTION_FACTOR
             agent_start_ind, agent_end_ind = data.frames[frame_ind]['agent_index_interval'][0], data.frames[frame_ind]['agent_index_interval'][-1]
 
@@ -96,7 +105,16 @@ def main():
                 track_id = data.agents[agent_ind]['track_id']
 
                 object_type_arr = data.agents[agent_ind]['label_probabilities'] # label_probabilities are listed like this: [0. 0. 0. 1. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.], which refers to the PERCEPTION_LABELS defined in l5kit
-                object_type_ind = int(np.argmax(object_type_arr)) # Get the index of the prob. array with the heighest probability of class detection
+                #print(object_type_arr)
+                object_type_ind = int(np.argmax(object_type_arr)) # Get the index of the prob. array with the highest probability of class detection
+                
+                # count the unknowns/total ratio for all frames
+                if object_type_ind == 0 or object_type_ind == 1 or object_type_ind == 2:
+                    unknown_count += 1
+                    current_unknown += 1
+                total_count += 1
+                current_total += 1
+                
                 object_type = PERCEPTION_LABELS[object_type_ind].split("_")[-1] # All labels come in the form: PERCEPTION_LABEL_CAR, only keep the last part of the string
 
                 x, y = data.agents[agent_ind]['centroid'][0], data.agents[agent_ind]['centroid'][-1]
@@ -109,14 +127,16 @@ def main():
         # Write data to .csv for scene
         scene_count += 1
         write_csv(content, scene_count, fp_time)
+        print("Unkown objects/total objects = ")
+        print(current_unknown/current_total)
 
+        # uncomment to stop the iterations at a certain number
+        # if scene_count == 50:
+        #     break
+        
+    print("\nAverage unkown objects/total objects over sample dataset = ")
+    print(unknown_count/total_count)
     return
 
 main()
-
-
-
-
-
-
 
