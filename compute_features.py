@@ -58,6 +58,10 @@ def parse_arguments() -> Any:
     parser.add_argument("--small",
                         action="store_true",
                         help="If true, a small subset of data is used.")
+    parser.add_argument("--extended_map",
+                        default=False,
+                        type=bool,
+                        help="If true, compute features returns an extended map.")
     return parser.parse_args()
 
 
@@ -102,6 +106,10 @@ def load_seq_save_features(
             map_feature_helpers["CANDIDATE_CENTERLINES"],
             map_feature_helpers["ORACLE_CENTERLINE"],
             map_feature_helpers["CANDIDATE_NT_DISTANCES"],
+            map_feature_helpers["CANDIDATE_LANE_SEGMENTS"],
+            map_feature_helpers["LANE_SEGMENTS_IN_BUBBLE"],
+            map_feature_helpers["LANE_SEGMENTS_IN_FRONT"],
+            map_feature_helpers["LANE_SEGMENTS_IN_BACK"],
         ])
 
         print(
@@ -116,6 +124,10 @@ def load_seq_save_features(
             "CANDIDATE_CENTERLINES",
             "ORACLE_CENTERLINE",
             "CANDIDATE_NT_DISTANCES",
+            "CANDIDATE_LANE_SEGMENTS",
+            "LANE_SEGMENTS_IN_BUBBLE",
+            "LANE_SEGMENTS_IN_FRONT",
+            "LANE_SEGMENTS_IN_BACK",
         ],
     )
 

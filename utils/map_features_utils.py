@@ -210,6 +210,10 @@ class MapFeaturesUtils:
         dfs_threshold_back = self._DFS_THRESHOLD_BACK_SCALE * (traj_len +
                                                                1) / 10
 
+        # Use a set to keep track of a unique list of future and past nodes
+        unique_segments_future = set()
+        unique_segments_past = set()
+
         # DFS to get all successor and predecessor candidates
         obs_pred_lanes: List[Sequence[int]] = []
         for lane in curr_lane_candidates:
@@ -218,6 +222,14 @@ class MapFeaturesUtils:
             candidates_past = avm.dfs(lane, city_name, 0, dfs_threshold_back,
                                       True)
 
+            # Add items to the sets
+            if mode == "compute_all":
+                for future_lane_seq in candidates_future:
+                    unique_segments_future.update(future_lane_seq)
+                
+                for past_lane_seq in candidates_past:
+                    unique_segments_past.update(past_lane_seq)
+                
             # Merge past and future
             for past_lane_seq in candidates_past:
                 for future_lane_seq in candidates_future:
@@ -234,7 +246,7 @@ class MapFeaturesUtils:
             obs_pred_lanes, xy, city_name, avm)
 
         # If the best centerline is not along the direction of travel, re-sort
-        if mode == "test":
+        if mode == "test" or mode == "compute_all":
             candidate_centerlines = self.get_heuristic_centerlines_for_test_set(
                 obs_pred_lanes, xy, city_name, avm, max_candidates, scores)
         else:
@@ -273,6 +285,9 @@ class MapFeaturesUtils:
             plt.title(f"Number of candidates = {len(candidate_centerlines)}")
             plt.show()
 
+        if mode == "compute_all":
+            return candidate_centerlines, obs_pred_lanes, list(unique_segments_future), list(unique_segments_past), curr_lane_candidates
+
         return candidate_centerlines
 
     def compute_map_features(
@@ -300,6 +315,12 @@ class MapFeaturesUtils:
                 map_feature_helpers (dict): Dictionary containing helpers for map features
 
         """
+        obs_pred_lanes = []
+        unique_segments_future = []
+        unique_segments_past = []
+        curr_lane_candidates = [] 
+
+
         # Get observed 2 secs of the agent
         agent_xy = agent_track[:, [raw_data_format["X"], raw_data_format["Y"]
                                    ]].astype("float")
@@ -335,6 +356,42 @@ class MapFeaturesUtils:
                     agent_xy_obs, candidate_centerline)
                 candidate_nt_distances.append(candidate_nt_distance)
 
+        elif mode == "compute_all":
+            # Get oracle centerline
+            oracle_centerline = self.get_candidate_centerlines_for_trajectory(
+                agent_xy,
+                city_name,
+                avm,
+                viz=False,
+                max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+                seq_len=seq_len,
+                mode="train",
+            )[0]
+            # Get NT distance for oracle centerline
+            oracle_nt_dist = get_nt_distance(agent_xy,
+                                             oracle_centerline,
+                                             viz=False)
+            
+            # Get candidate centerl = []ines
+            candidate_centerlines, obs_pred_lanes, unique_segments_future, unique_segments_past, curr_lane_candidates = self.get_candidate_centerlines_for_trajectory(
+                agent_xy_obs,
+                city_name,
+                avm,
+                viz=False,
+                max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+                seq_len=seq_len,
+                max_candidates=self._MAX_CENTERLINE_CANDIDATES_TEST,
+                mode=mode
+            )
+
+            # Get nt distance for the entire trajectory using candidate centerlines
+            candidate_nt_distances = []
+            for candidate_centerline in candidate_centerlines:
+                candidate_nt_distance = np.full((seq_len, 2), None)
+                candidate_nt_distance[:obs_len] = get_nt_distance(
+                    agent_xy_obs, candidate_centerline)
+                candidate_nt_distances.append(candidate_nt_distance)
+
         else:
             oracle_centerline = self.get_candidate_centerlines_for_trajectory(
                 agent_xy,
@@ -357,6 +414,10 @@ class MapFeaturesUtils:
             "ORACLE_CENTERLINE": oracle_centerline,
             "CANDIDATE_CENTERLINES": candidate_centerlines,
             "CANDIDATE_NT_DISTANCES": candidate_nt_distances,
+            "CANDIDATE_LANE_SEGMENTS": obs_pred_lanes,
+            "LANE_SEGMENTS_IN_BUBBLE": curr_lane_candidates,
+            "LANE_SEGMENTS_IN_FRONT": unique_segments_future,
+            "LANE_SEGMENTS_IN_BACK": unique_segments_past 
         }
 
         return oracle_nt_dist, map_feature_helpers
