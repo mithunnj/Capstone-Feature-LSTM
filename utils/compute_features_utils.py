@@ -8,7 +8,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Tuple
 import sys
-
+import math
 import argparse
 from joblib import Parallel, delayed
 import numpy as np
@@ -16,10 +16,21 @@ import pandas as pd
 import pickle as pkl
 
 # Set global FPs
-CURR_DIR = os.getcwd()
-ROOT_DIR = os.path.dirname(CURR_DIR)
-DATA_DIR = ROOT_DIR + "/data"
-COMPUTE_FEATURES_SAVE_DIR = ROOT_DIR + "/computed_features"
+CURR_DIR = os.getcwd() if os.getcwd().split('/')[-1] == "Capstone_Social_LSTM" else os.path.dirname(os.getcwd())
+DATA_DIR = CURR_DIR + "/data"
+COMPUTE_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features"
+
+def calc_magnitude(x, y):
+    '''
+    Input: x,y <Float> - x,y components of physics vectors (ex. vel_x, vel_y)
+    Output: <Float>
+    
+    Description: Given the x and y components of physics vectors, this will return the normalized magnitude.
+        ex. Given velocity in the x, y direction, the scalar speed will be the result.
+    '''
+    squared_terms = (x**2) + (y**2)
+
+    return math.sqrt(squared_terms)
 
 def compute_physics_features(seq_path):
     '''
