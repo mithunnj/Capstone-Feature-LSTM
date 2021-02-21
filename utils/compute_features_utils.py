@@ -49,9 +49,18 @@ def compute_physics_features(seq_path):
 
         return param_change/time_change
 
+    # Helper function calculate yaw with delta_x, delta_y
+    def calc_yaw(data, index):
+        dX = data[index]["X"] - data[index-1]["X"]
+        dY = data[index]["Y"] - data[index-1]["Y"]
+
+        yaw = math.atan2(dY, dX)
+
+        return yaw
+
     df = pd.read_csv(seq_path) # Load .csv data
     # Per agent information 
-    per_agent_info_headings = ["TIMESTAMP", "TRACK_ID", "X", "Y", "VEL_X", "VEL_Y", "ACC_X", "ACC_Y", "JERK_X", "JERK_Y"] 
+    per_agent_info_headings = ["TIMESTAMP", "TRACK_ID", "X", "Y", "VEL_X", "VEL_Y", "ACC_X", "ACC_Y", "JERK_X", "JERK_Y", "YAW", "YAW_RATE"] 
 
     # Get all unique track_ids (represents the agents in the scene - .csv file)
     agent_ids = df["TRACK_ID"].unique().tolist()
@@ -80,15 +89,22 @@ def compute_physics_features(seq_path):
             # Update time varying data
             index = 0 if len(agent_info)  == 0 else len(agent_info)-1
 
-            # Update velocity after there are at least 2 position information
+            # Update velocity, yaw after there are at least 2 position information
             if len(agent_info) >= 2:
+                # Calculate velocity
                 agent_info[index]["VEL_X"] = rate_of_change(agent_info, "X", index)
                 agent_info[index]["VEL_Y"] = rate_of_change(agent_info, "Y", index)
 
+                # Calculate Yaw information w/o YAW_RATE info (will result in None)
+                agent_info[index]["YAW"] = calc_yaw(agent_info, index)
+
             # Update acceleration after there are at least 2 velocity information
+            # Update yaw rate after there are at least 2 yaw values
             if len(agent_info) >= 3:
                 agent_info[index]["ACC_X"] = rate_of_change(agent_info, "VEL_X", index)
                 agent_info[index]["ACC_Y"] = rate_of_change(agent_info, "VEL_Y", index)
+            
+                agent_info[index]["YAW_RATE"] = rate_of_change(agent_info, "YAW", index)
 
             # Update jerk after there are at least 2 acceleration information
             if len(agent_info) >= 4:
