@@ -17,6 +17,8 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 
+from argoverse.map_representation.map_api import ArgoverseMap
+
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
@@ -40,7 +42,7 @@ def parse_arguments() -> Any:
     parser.add_argument("--mode",
                         required=True,
                         type=str,
-                        help="train/val/test")
+                        help="train/val/test/compute_all/lanes_only")
     parser.add_argument(
         "--batch_size",
         default=100,
@@ -58,10 +60,10 @@ def parse_arguments() -> Any:
     parser.add_argument("--small",
                         action="store_true",
                         help="If true, a small subset of data is used.")
-    parser.add_argument("--extended_map",
+    parser.add_argument("--multi_agent",
                         default=False,
-                        type=bool,
-                        help="If true, compute features returns an extended map.")
+                        action="store_true",
+                        help="If true, compute features will only compute the lane selection features.")
     return parser.parse_args()
 
 
@@ -71,6 +73,7 @@ def load_seq_save_features(
         save_dir: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
+        argoverse_map_api_instance: ArgoverseMap
 ) -> None:
     """Load sequences, compute features, and save them.
     
@@ -98,19 +101,22 @@ def load_seq_save_features(
         # Compute social and map features
         features, map_feature_helpers = compute_features(
             file_path, map_features_utils_instance,
-            social_features_utils_instance)
+            social_features_utils_instance,
+            argoverse_map_api_instance)
         count += 1
-        data.append([
-            seq_id,
-            features,
-            map_feature_helpers["CANDIDATE_CENTERLINES"],
-            map_feature_helpers["ORACLE_CENTERLINE"],
-            map_feature_helpers["CANDIDATE_NT_DISTANCES"],
-            map_feature_helpers["CANDIDATE_LANE_SEGMENTS"],
-            map_feature_helpers["LANE_SEGMENTS_IN_BUBBLE"],
-            map_feature_helpers["LANE_SEGMENTS_IN_FRONT"],
-            map_feature_helpers["LANE_SEGMENTS_IN_BACK"],
-        ])
+        for agent_id in map_feature_helpers.keys():
+            data.append([
+                seq_id,
+                features[agent_id],
+                agent_id,
+                map_feature_helpers[agent_id]["CANDIDATE_CENTERLINES"],
+                map_feature_helpers[agent_id]["ORACLE_CENTERLINE"],
+                map_feature_helpers[agent_id]["CANDIDATE_NT_DISTANCES"],
+                map_feature_helpers[agent_id]["CANDIDATE_LANE_SEGMENTS"],
+                map_feature_helpers[agent_id]["LANE_SEGMENTS_IN_BUBBLE"],
+                map_feature_helpers[agent_id]["LANE_SEGMENTS_IN_FRONT"],
+                map_feature_helpers[agent_id]["LANE_SEGMENTS_IN_BACK"],
+            ])
 
         print(
             f"{args.mode}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
@@ -121,6 +127,7 @@ def load_seq_save_features(
         columns=[
             "SEQUENCE",
             "FEATURES",
+            "TRACK_ID",
             "CANDIDATE_CENTERLINES",
             "ORACLE_CENTERLINE",
             "CANDIDATE_NT_DISTANCES",
@@ -142,6 +149,7 @@ def compute_features(
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
+        avm: ArgoverseMap
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Compute social and map features for the sequence.
 
@@ -157,39 +165,65 @@ def compute_features(
     args = parse_arguments()
     df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
 
-    # Get social and map features for the agent
-    agent_track = df[df["OBJECT_TYPE"] == "AGENT"].values
+    all_features = dict()
+    all_feature_helpers = dict()
 
-    # Social features are computed using only the observed trajectory
-    social_features = social_features_utils_instance.compute_social_features(
-        df, agent_track, args.obs_len, args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT)
-
-    # agent_track will be used to compute n-t distances for future trajectory,
-    # using centerlines obtained from observed trajectory
-    map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-        agent_track,
-        args.obs_len,
-        args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT,
-        args.mode,
-    )
-
-    # Combine social and map features
-
-    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    if agent_track.shape[0] == args.obs_len:
-        agent_track_seq = np.full(
-            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-        agent_track_seq[:args.obs_len] = agent_track
-        merged_features = np.concatenate(
-            (agent_track_seq, social_features, map_features), axis=1)
+    # Loop over every agent or only the predicted agent and compute features
+    agent_list = []
+    if args.multi_agent:
+        agent_list = df["TRACK_ID"].unique()
     else:
-        merged_features = np.concatenate(
-            (agent_track, social_features, map_features), axis=1)
+        agent_list = df[df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique()
 
-    return merged_features, map_feature_helpers
+    for track_id in agent_list:
+
+        # Get social and map features for the agent
+        agent_track = df[df["TRACK_ID"] == track_id].values
+
+        # Skip if the agent track is too short for social and map features
+        if not args.mode == "lanes_only" and len(agent_track) < args.obs_len + args.pred_len:
+            continue
+
+        # agent_track will be used to compute n-t distances for future trajectory,
+        # using centerlines obtained from observed trajectory
+        map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
+            agent_track,
+            args.obs_len,
+            args.obs_len + args.pred_len,
+            RAW_DATA_FORMAT,
+            args.mode,
+            avm
+        )
+
+        # If lanes only, return the map features
+        if args.mode == "lanes_only":
+            all_features[track_id] = map_features
+            all_feature_helpers[track_id] = map_feature_helpers
+            continue
+
+        # Social features are computed using only the observed trajectory
+        social_features = social_features_utils_instance.compute_social_features(
+            df, agent_track, args.obs_len, args.obs_len + args.pred_len,
+            RAW_DATA_FORMAT)
+
+        # Combine social and map features
+
+        # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
+        # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
+        if agent_track.shape[0] == args.obs_len:
+            agent_track_seq = np.full(
+                (args.obs_len + args.pred_len, agent_track.shape[1]), None)
+            agent_track_seq[:args.obs_len] = agent_track
+            merged_features = np.concatenate(
+                (agent_track_seq, social_features, map_features), axis=1)
+        else:
+            merged_features = np.concatenate(
+                (agent_track, social_features, map_features), axis=1)
+
+        all_features[track_id] = social_features
+        all_feature_helpers[track_id] = map_feature_helpers
+
+    return all_features, all_feature_helpers
 
 
 def merge_saved_features(batch_save_dir: str) -> None:
@@ -226,7 +260,13 @@ if __name__ == "__main__":
     start = time.time()
 
     map_features_utils_instance = MapFeaturesUtils()
-    social_features_utils_instance = SocialFeaturesUtils()
+
+    argoverse_map_api_instance = ArgoverseMap()
+
+    # Don't initialize social feature utils if the mode is lanes_only
+    social_features_utils_instance = None 
+    if args.mode != "lanes_only":
+        social_features_utils_instance = SocialFeaturesUtils()
 
     sequences = os.listdir(args.data_dir)
     temp_save_dir = tempfile.mkdtemp()
@@ -239,7 +279,19 @@ if __name__ == "__main__":
         temp_save_dir,
         map_features_utils_instance,
         social_features_utils_instance,
+        argoverse_map_api_instance
     ) for i in range(0, num_sequences, args.batch_size))
+
+    # Switch the above parrallel call to this if visualizing with cProfile
+    # load_seq_save_features(
+    #     0,
+    #     sequences,
+    #     temp_save_dir,
+    #     map_features_utils_instance,
+    #     social_features_utils_instance,
+    #     argoverse_map_api_instance
+    # )
+
     merge_saved_features(temp_save_dir)
     shutil.rmtree(temp_save_dir)
 
