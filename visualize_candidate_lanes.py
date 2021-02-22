@@ -96,14 +96,20 @@ def plot_scene(args, seq, seq_agents_df, map_feature_row):
     """Function that plots the centerlines and all agent trajectories."""
 
     candidate_centerlines = map_feature_row["CANDIDATE_CENTERLINES"]
+    leads = map_feature_row["LEADING_VEHICLES"]
+    follows = map_feature_row["FOLLOWING_VEHICLES"]
 
     # Visualize the map centerlines
     for centerline_coords in candidate_centerlines:
         visualize_centerline(centerline_coords)
 
     # Plot the all the other agents
+    # here check if the agent exists in the lead array, if so change colour?
     for other_id in seq_agents_df["TRACK_ID"].unique():
-        plot_agent_track(track_id=other_id, seq_agents_df=seq_agents_df, colour="#289BD4", line_width=3, alpha=0.5)
+        if other_id in leads or other_id in follows:
+            plot_agent_track(track_id=other_id, seq_agents_df=seq_agents_df, colour="g", line_width=3, alpha=0.5)
+        else:    
+            plot_agent_track(track_id=other_id, seq_agents_df=seq_agents_df, colour="#289BD4", line_width=3, alpha=0.5)
 
     # Plot the trajectory of the real "AGENT"
     agent_track_id = seq_agents_df[seq_agents_df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique()[0]

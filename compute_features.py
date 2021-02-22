@@ -17,12 +17,9 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 
-from argoverse.map_representation.map_api import ArgoverseMap
-
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
-
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -42,7 +39,7 @@ def parse_arguments() -> Any:
     parser.add_argument("--mode",
                         required=True,
                         type=str,
-                        help="train/val/test/compute_all/lanes_only")
+                        help="train/val/test")
     parser.add_argument(
         "--batch_size",
         default=100,
@@ -60,10 +57,10 @@ def parse_arguments() -> Any:
     parser.add_argument("--small",
                         action="store_true",
                         help="If true, a small subset of data is used.")
-    parser.add_argument("--multi_agent",
+    parser.add_argument("--extended_map",
                         default=False,
-                        action="store_true",
-                        help="If true, compute features will only compute the lane selection features.")
+                        type=bool,
+                        help="If true, compute features returns an extended map.")
     return parser.parse_args()
 
 
@@ -73,7 +70,6 @@ def load_seq_save_features(
         save_dir: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
-        argoverse_map_api_instance: ArgoverseMap
 ) -> None:
     """Load sequences, compute features, and save them.
     
@@ -101,14 +97,17 @@ def load_seq_save_features(
         # Compute social and map features
         features, map_feature_helpers = compute_features(
             file_path, map_features_utils_instance,
-            social_features_utils_instance,
-            argoverse_map_api_instance)
+            social_features_utils_instance)
         count += 1
         for agent_id in map_feature_helpers.keys():
             data.append([
                 seq_id,
                 features[agent_id],
                 agent_id,
+                map_feature_helpers[agent_id]["LEADING_VEHICLES"],
+                map_feature_helpers[agent_id]["FOLLOWING_VEHICLES"],
+                map_feature_helpers[agent_id]["LEADING_DISTANCES"],
+                map_feature_helpers[agent_id]["FOLLOWING_DISTANCES"],
                 map_feature_helpers[agent_id]["CANDIDATE_CENTERLINES"],
                 map_feature_helpers[agent_id]["ORACLE_CENTERLINE"],
                 map_feature_helpers[agent_id]["CANDIDATE_NT_DISTANCES"],
@@ -128,6 +127,10 @@ def load_seq_save_features(
             "SEQUENCE",
             "FEATURES",
             "TRACK_ID",
+            "LEADING_VEHICLES",
+            "FOLLOWING_VEHICLES",
+            "LEADING_DISTANCES",
+            "FOLLOWING_DISTANCES",
             "CANDIDATE_CENTERLINES",
             "ORACLE_CENTERLINE",
             "CANDIDATE_NT_DISTANCES",
@@ -149,7 +152,6 @@ def compute_features(
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
-        avm: ArgoverseMap
 ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Compute social and map features for the sequence.
 
@@ -168,43 +170,31 @@ def compute_features(
     all_features = dict()
     all_feature_helpers = dict()
 
-    # Loop over every agent or only the predicted agent and compute features
-    agent_list = []
-    if args.multi_agent:
-        agent_list = df["TRACK_ID"].unique()
-    else:
-        agent_list = df[df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique()
-
-    for track_id in agent_list:
+    # Loop over every agent in the scene calculating map values for them
+    for track_id in df["TRACK_ID"].unique():
 
         # Get social and map features for the agent
         agent_track = df[df["TRACK_ID"] == track_id].values
 
-        # Skip if the agent track is too short for social and map features
-        if not args.mode == "lanes_only" and len(agent_track) < args.obs_len + args.pred_len:
-            continue
-
-        # agent_track will be used to compute n-t distances for future trajectory,
-        # using centerlines obtained from observed trajectory
-        map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-            agent_track,
-            args.obs_len,
-            args.obs_len + args.pred_len,
-            RAW_DATA_FORMAT,
-            args.mode,
-            avm
-        )
-
-        # If lanes only, return the map features
-        if args.mode == "lanes_only":
-            all_features[track_id] = map_features
-            all_feature_helpers[track_id] = map_feature_helpers
+        if len(agent_track) < args.obs_len + args.pred_len:
             continue
 
         # Social features are computed using only the observed trajectory
         social_features = social_features_utils_instance.compute_social_features(
             df, agent_track, args.obs_len, args.obs_len + args.pred_len,
             RAW_DATA_FORMAT)
+
+        # agent_track will be used to compute n-t distances for future trajectory,
+        # using centerlines obtained from observed trajectory
+        map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
+            df,
+            track_id,
+            agent_track,
+            args.obs_len,
+            args.obs_len + args.pred_len,
+            RAW_DATA_FORMAT,
+            args.mode,
+        )
 
         # Combine social and map features
 
@@ -260,13 +250,7 @@ if __name__ == "__main__":
     start = time.time()
 
     map_features_utils_instance = MapFeaturesUtils()
-
-    argoverse_map_api_instance = ArgoverseMap()
-
-    # Don't initialize social feature utils if the mode is lanes_only
-    social_features_utils_instance = None 
-    if args.mode != "lanes_only":
-        social_features_utils_instance = SocialFeaturesUtils()
+    social_features_utils_instance = SocialFeaturesUtils()
 
     sequences = os.listdir(args.data_dir)
     temp_save_dir = tempfile.mkdtemp()
@@ -279,19 +263,7 @@ if __name__ == "__main__":
         temp_save_dir,
         map_features_utils_instance,
         social_features_utils_instance,
-        argoverse_map_api_instance
     ) for i in range(0, num_sequences, args.batch_size))
-
-    # Switch the above parrallel call to this if visualizing with cProfile
-    # load_seq_save_features(
-    #     0,
-    #     sequences,
-    #     temp_save_dir,
-    #     map_features_utils_instance,
-    #     social_features_utils_instance,
-    #     argoverse_map_api_instance
-    # )
-
     merge_saved_features(temp_save_dir)
     shutil.rmtree(temp_save_dir)
 
