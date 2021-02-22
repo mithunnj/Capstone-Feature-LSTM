@@ -13,6 +13,7 @@ from argoverse.utils.centerline_utils import (
     remove_overlapping_lane_seq,
 )
 from argoverse.utils.mpl_plotting_utils import visualize_centerline
+from argoverse.utils.line_projection import project_to_line_seq
 from utils.baseline_config import (
     _MANHATTAN_THRESHOLD,
     _DFS_THRESHOLD_FRONT_SCALE,
@@ -223,7 +224,7 @@ class MapFeaturesUtils:
                                       True)
 
             # Add items to the sets
-            if mode == "compute_all":
+            if mode == "compute_all" or mode == "lanes_only":
                 for future_lane_seq in candidates_future:
                     unique_segments_future.update(future_lane_seq)
                 
@@ -246,7 +247,7 @@ class MapFeaturesUtils:
             obs_pred_lanes, xy, city_name, avm)
 
         # If the best centerline is not along the direction of travel, re-sort
-        if mode == "test" or mode == "compute_all":
+        if mode == "test" or mode == "compute_all" or mode == "lanes_only":
             candidate_centerlines = self.get_heuristic_centerlines_for_test_set(
                 obs_pred_lanes, xy, city_name, avm, max_candidates, scores)
         else:
@@ -285,7 +286,7 @@ class MapFeaturesUtils:
             plt.title(f"Number of candidates = {len(candidate_centerlines)}")
             plt.show()
 
-        if mode == "compute_all":
+        if mode == "compute_all" or mode == "lanes_only":
             return candidate_centerlines, obs_pred_lanes, list(unique_segments_future), list(unique_segments_past), curr_lane_candidates
 
         return candidate_centerlines
@@ -297,6 +298,7 @@ class MapFeaturesUtils:
             seq_len: int,
             raw_data_format: Dict[str, int],
             mode: str,
+            avm: ArgoverseMap
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Compute map based features for the given sequence.
 
@@ -330,8 +332,6 @@ class MapFeaturesUtils:
         ]].astype("float")
 
         # Get API for Argo Dataset map
-        avm = ArgoverseMap()
-
         city_name = agent_track[0, raw_data_format["CITY_NAME"]]
 
         # Get candidate centerlines using observed trajectory
@@ -391,6 +391,35 @@ class MapFeaturesUtils:
                 candidate_nt_distance[:obs_len] = get_nt_distance(
                     agent_xy_obs, candidate_centerline)
                 candidate_nt_distances.append(candidate_nt_distance)
+
+        elif mode == "lanes_only":
+            # Get oracle centerline
+            oracle_centerline = self.get_candidate_centerlines_for_trajectory(
+                agent_xy,
+                city_name,
+                avm,
+                viz=False,
+                max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+                seq_len=seq_len,
+                mode="train",
+            )[0]
+            # Not computing oracle nt_distances
+            oracle_nt_dist = np.full((seq_len, 2), None) 
+            
+            # Get candidate centerl = []ines
+            candidate_centerlines, obs_pred_lanes, unique_segments_future, unique_segments_past, curr_lane_candidates = self.get_candidate_centerlines_for_trajectory(
+                agent_xy_obs,
+                city_name,
+                avm,
+                viz=False,
+                max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+                seq_len=seq_len,
+                max_candidates=self._MAX_CENTERLINE_CANDIDATES_TEST,
+                mode=mode
+            )
+
+            # Not computing candidate nt_distances
+            candidate_nt_distances = []
 
         else:
             oracle_centerline = self.get_candidate_centerlines_for_trajectory(
