@@ -1,9 +1,10 @@
 """This module is used for computing map features for motion forecasting baselines."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import cascaded_union
 
@@ -113,7 +114,9 @@ class MapFeaturesUtils:
 
         """
         aligned_centerlines = []
+        aligned_lane_seq = []
         diverse_centerlines = []
+        diverse_lane_seq = []
         diverse_scores = []
         num_candidates = 0
 
@@ -130,14 +133,17 @@ class MapFeaturesUtils:
                 if end_dist > start_dist:
                     aligned_cl_count += 1
                     aligned_centerlines.append(centerline)
+                    aligned_lane_seq.append(lane_seq)
                     diverse = False
             if diverse:
                 diverse_centerlines.append(centerline)
+                diverse_lane_seq.append(lane_seq)
                 diverse_scores.append(score)
 
         num_diverse_centerlines = min(len(diverse_centerlines),
                                       max_candidates - aligned_cl_count)
         test_centerlines = aligned_centerlines
+        test_lane_seq = aligned_lane_seq
         if num_diverse_centerlines > 0:
             probabilities = ([
                 float(score + 1) / (sum(diverse_scores) + len(diverse_scores))
@@ -153,9 +159,13 @@ class MapFeaturesUtils:
             diverse_centerlines = [
                 diverse_centerlines[i] for i in diverse_centerlines_idx
             ]
+            diverse_lane_seq = [
+                diverse_lane_seq[i] for i in diverse_centerlines_idx
+            ]
             test_centerlines += diverse_centerlines
+            test_lane_seq += diverse_lane_seq
 
-        return test_centerlines
+        return test_centerlines, test_lane_seq
 
     def get_candidate_centerlines_for_trajectory(
             self,
@@ -189,6 +199,11 @@ class MapFeaturesUtils:
             candidate_centerlines: List of candidate centerlines
 
         """
+
+        candidate_lane_segments = None
+        candidate_centerlines = None
+
+
         # Get all lane candidates within a bubble
         curr_lane_candidates = avm.get_lane_ids_in_xy_bbox(
             xy[-1, 0], xy[-1, 1], city_name, self._MANHATTAN_THRESHOLD)
@@ -211,10 +226,6 @@ class MapFeaturesUtils:
         dfs_threshold_back = self._DFS_THRESHOLD_BACK_SCALE * (traj_len +
                                                                1) / 10
 
-        # Use a set to keep track of a unique list of future and past nodes
-        unique_segments_future = set()
-        unique_segments_past = set()
-
         # DFS to get all successor and predecessor candidates
         obs_pred_lanes: List[Sequence[int]] = []
         for lane in curr_lane_candidates:
@@ -222,14 +233,6 @@ class MapFeaturesUtils:
                                         dfs_threshold_front)
             candidates_past = avm.dfs(lane, city_name, 0, dfs_threshold_back,
                                       True)
-
-            # Add items to the sets
-            if mode == "compute_all" or mode == "lanes_only":
-                for future_lane_seq in candidates_future:
-                    unique_segments_future.update(future_lane_seq)
-                
-                for past_lane_seq in candidates_past:
-                    unique_segments_past.update(past_lane_seq)
                 
             # Merge past and future
             for past_lane_seq in candidates_past:
@@ -247,10 +250,12 @@ class MapFeaturesUtils:
             obs_pred_lanes, xy, city_name, avm)
 
         # If the best centerline is not along the direction of travel, re-sort
-        if mode == "test" or mode == "compute_all" or mode == "lanes_only":
-            candidate_centerlines = self.get_heuristic_centerlines_for_test_set(
+        if mode == "test" or mode == "lanes_only":
+            # Sort based on alignment with candidate lane
+            candidate_centerlines, candidate_lane_segments = self.get_heuristic_centerlines_for_test_set(
                 obs_pred_lanes, xy, city_name, avm, max_candidates, scores)
         else:
+            # Pick oracle centerline
             candidate_centerlines = avm.get_cl_from_lane_seq(
                 [obs_pred_lanes[0]], city_name)
 
@@ -286,8 +291,8 @@ class MapFeaturesUtils:
             plt.title(f"Number of candidates = {len(candidate_centerlines)}")
             plt.show()
 
-        if mode == "compute_all" or mode == "lanes_only":
-            return candidate_centerlines, obs_pred_lanes, list(unique_segments_future), list(unique_segments_past), curr_lane_candidates
+        if mode == "lanes_only":
+            return candidate_centerlines, candidate_lane_segments
 
         return candidate_centerlines
 
@@ -450,3 +455,93 @@ class MapFeaturesUtils:
         }
 
         return oracle_nt_dist, map_feature_helpers
+
+
+    def compute_lane_candidates(
+            self,
+            seq_id: int,
+            scene_df: pd.DataFrame,
+            agent_list: list,
+            obs_len: int,
+            seq_len: int,
+            raw_data_format: Dict[str, int],
+            mode: str,
+            multi_agent: bool,
+            avm: ArgoverseMap
+    ) -> Tuple[list, list]:
+        """Compute candidate centerlines for a given sequence.
+
+        Args:
+            scene_df : Dataframe for the scene where each row is an agent and timestep
+            agent_list: A list of track ids of agents that should be computed
+            obs_len : Length of observed trajectory
+            seq_len : Length of the sequence
+            raw_data_format : Format of the sequence
+            mode: train/val/test mode
+            multi_agent: Whether or not this should be computed for multiple agents (must be False)
+            
+        Returns:
+            colums (list of strings): column names for the return dataframe
+            dataframe (pd dataframe): Dataframe containing the centerlines for each agent
+
+        """
+
+        assert avm != None, "Invalid argoverse map api instance passed to compute_lane_candidates."
+        assert not multi_agent and len(agent_list) == 1, "Candidate centerlines not supported for multiple agents"
+
+        # Get agent track
+        track_id = agent_list[0]
+        agent_track = scene_df[scene_df["TRACK_ID"] == track_id].values
+
+        # Get observed 2 secs of the agent
+        agent_xy = agent_track[:, [raw_data_format["X"], raw_data_format["Y"]
+                                   ]].astype("float")
+        agent_track_obs = agent_track[:obs_len]
+        agent_xy_obs = agent_track_obs[:, [
+            raw_data_format["X"], raw_data_format["Y"]
+        ]].astype("float")
+
+        
+        # Get API for Argo Dataset map
+        city_name = agent_track[0, raw_data_format["CITY_NAME"]]
+
+        # Find the oracle centerline for training
+        oracle_centerline = self.get_candidate_centerlines_for_trajectory(
+            agent_xy,
+            city_name,
+            avm,
+            viz=False,
+            max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+            seq_len=seq_len,
+            mode="train",
+        )[0]
+
+        # Find the candidate centerlines for testing
+        candidate_centerlines, candidate_lane_segments = self.get_candidate_centerlines_for_trajectory(
+            agent_xy_obs,
+            city_name,
+            avm,
+            viz=False,
+            max_search_radius=self._MAX_SEARCH_RADIUS_CENTERLINES,
+            seq_len=seq_len,
+            max_candidates=self._MAX_CENTERLINE_CANDIDATES_TEST,
+            mode="lanes_only"
+        )
+
+        # Set return columns
+        columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "LANE_SEGMENTS", "ORACLE_CENTERLINE" ]
+
+        # Simple check to see if the lane segments and centerlines are the same length
+        assert len(candidate_centerlines) == len(candidate_lane_segments), "Lane candidates do not match lane segments."
+
+        # Convert list of centerlines/segments to tuple format (centerline_id, data)
+        centerline_tuples = []
+        lane_segment_tuples = []
+        for i in range(len(candidate_centerlines)):
+            centerline_tuples.append((i, candidate_centerlines[i]))
+            lane_segment_tuples.append((i, candidate_lane_segments[i]))
+
+        # Construct the return row
+        rows = [ [ seq_id, track_id, centerline_tuples, lane_segment_tuples, oracle_centerline ] ]
+
+        return columns, rows

@@ -139,7 +139,7 @@ def compute_features(
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
         avm: ArgoverseMap
-) -> Tuple[list, pd.DataFrame]:
+) -> Tuple[list, list]:
     """Compute features for all.
 
     Args:
@@ -172,11 +172,21 @@ def compute_features(
     # Call function for the given feature type
     if args.feature_type == "testing": # Temp values for testing
         columns = ["SEQUENCE", "TRACK_ID", "MY_FEATURE"]
-        all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ] ]
+        all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ], [ seq_id + 1, agent_list[0], 2.0 ]]
 
     elif args.feature_type == "candidate_lanes": # SASHA add lane candidate function here
-        columns, all_feature_rows = None, None
-
+        columns, all_feature_rows = map_features_utils_instance.compute_lane_candidates(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            obs_len=args.obs_len,
+            seq_len=args.obs_len + args.pred_len,
+            raw_data_format=RAW_DATA_FORMAT,
+            mode=args.mode,
+            multi_agent=args.multi_agent,
+            avm=avm
+        )
+ 
     elif args.feature_type == "physics": # MITHUN add physics function call here
         columns, all_feature_rows = None, None
 
@@ -236,7 +246,7 @@ if __name__ == "__main__":
 
     # Initialize Argoverse Map API and util functions
     map_features_utils_instance = MapFeaturesUtils()
-    argoverse_map_api_instance = None # ArgoverseMap()
+    argoverse_map_api_instance = ArgoverseMap()
     social_features_utils_instance = None # SocialFeaturesUtils()
 
     # Get list of scenes and create temp directory
