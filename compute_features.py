@@ -24,20 +24,7 @@ from argoverse.map_representation.map_api import ArgoverseMap
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE, FEATURE_TYPES
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
-<<<<<<< HEAD
-<<<<<<< HEAD
 from utils.compute_features_utils import compute_physics_features
-=======
-
-# Set global FPs
-CURR_DIR = os.getcwd()
-DATA_DIR = CURR_DIR + "/data"
-COMPUTE_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features"
-
->>>>>>> a2a5a7164... compute_features.py
-=======
-from utils.compute_features_utils import compute_physics_features
->>>>>>> 371fb965d... Ported over compute_physics_features to dedicated utils directory
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -135,15 +122,12 @@ def load_seq_save_features(
             f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
         )
         
-<<<<<<< HEAD
         break # DEBUG REMOVE - Wanted to break out of this process after a single file
 
     assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE"
     assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
     
     # Create dataframe for this batch
-=======
->>>>>>> 371fb965d... Ported over compute_physics_features to dedicated utils directory
     data_df = pd.DataFrame(
         all_rows,
         columns=feature_columns,
@@ -181,7 +165,6 @@ def compute_features(
     columns = list()
     all_feature_rows = dict()
 
-<<<<<<< HEAD
     # Compute agent list based on args.multi_agent
     agent_list = []
     if args.multi_agent:
@@ -189,17 +172,6 @@ def compute_features(
         # Construct list of agents in the scene
         agent_list = scene_df["TRACK_ID"].unique().tolist()
     
-=======
-    # Combine social and map features
-    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    if agent_track.shape[0] == args.obs_len:
-        agent_track_seq = np.full(
-            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-        agent_track_seq[:args.obs_len] = agent_track
-        merged_features = np.concatenate(
-            (agent_track_seq, social_features, map_features), axis=1)
->>>>>>> 371fb965d... Ported over compute_physics_features to dedicated utils directory
     else:
         # Construct a list of only the Argo AGENT
         agent_list = scene_df[scene_df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique().tolist()
