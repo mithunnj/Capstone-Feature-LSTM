@@ -16,12 +16,14 @@ from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 import pickle as pkl
+import sys
 
 from argoverse.map_representation.map_api import ArgoverseMap
 
 from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE, FEATURE_TYPES
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
+from utils.compute_features_utils import compute_physics_features 
 
 
 def parse_arguments() -> Any:
@@ -71,68 +73,6 @@ def parse_arguments() -> Any:
                         help="If true, compute features will only compute the lane selection features.")
     return parser.parse_args()
 
-
-def load_seq_save_features(
-        start_idx: int,
-        sequences: List[str],
-        save_dir: str,
-        map_features_utils_instance: MapFeaturesUtils,
-        social_features_utils_instance: SocialFeaturesUtils,
-        argoverse_map_api_instance: ArgoverseMap
-) -> None:
-    """Load sequences, compute features, and save them.
-    
-    Args:
-        start_idx : Starting index of the current batch
-        sequences : Sequence file names
-        save_dir: Directory where features for the current batch are to be saved
-        map_features_utils_instance: MapFeaturesUtils instance
-        social_features_utils_instance: SocialFeaturesUtils instance
-
-    """
-    count = 0
-    args = parse_arguments()
-    all_rows = []
-
-    # Enumerate over the batch starting at start_idx
-    for seq in sequences[start_idx:start_idx + args.batch_size]:
-
-        if not seq.endswith(".csv"):
-            continue
-        
-        seq_file_path = f"{args.data_dir}/{seq}"
-        seq_id = int(seq.split(".")[0])
-
-        # Compute social and map features
-        feature_columns, scene_rows = compute_features(
-            seq_id, seq_file_path, map_features_utils_instance,
-            social_features_utils_instance,
-            argoverse_map_api_instance)
-        count += 1
-
-        # Merge the features for all agents and all scenes
-        all_rows.extend(scene_rows)
-
-        print(
-            f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        )
-
-    assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE"
-    assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
-    
-    # Create dataframe for this batch
-    data_df = pd.DataFrame(
-        all_rows,
-        columns=feature_columns,
-    )
-
-    # Save the computed features for all the sequences in the batch as a single file
-    os.makedirs(save_dir, exist_ok=True)
-    data_df.to_pickle(
-        f"{save_dir}/forecasting_features_{args.mode}_{args.feature_type}_{start_idx}_{start_idx + args.batch_size}.pkl"
-    )
-
-
 def compute_features(
         seq_id: int,
         seq_path: str,
@@ -152,11 +92,11 @@ def compute_features(
 
     """
     args = parse_arguments()
-    
+
     scene_df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
 
     columns = list()
-    all_feature_rows = dict()
+    all_feature_rows = list()
 
     # Compute agent list based on args.multi_agent
     agent_list = []
@@ -188,7 +128,7 @@ def compute_features(
         )
  
     elif args.feature_type == "physics": # MITHUN add physics function call here
-        columns, all_feature_rows = None, None
+        columns, all_feature_rows = compute_physics_features(seq_path)
 
     elif args.feature_type == "semantic_map": # FARID add semantic map function call here
         columns, all_feature_rows = None, None
@@ -198,8 +138,77 @@ def compute_features(
 
     else:
         assert False, "Invalid feature type."
-    
+
+
     return columns, all_feature_rows
+
+
+def load_seq_save_features(
+        start_idx: int,
+        sequences: List[str],
+        save_dir: str,
+        map_features_utils_instance: MapFeaturesUtils,
+        social_features_utils_instance: SocialFeaturesUtils,
+        argoverse_map_api_instance: ArgoverseMap
+) -> None:
+    """Load sequences, compute features, and save them.
+    
+    Args:
+        start_idx : Starting index of the current batch
+        sequences : Sequence file names
+        save_dir: Directory where features for the current batch are to be saved
+        map_features_utils_instance: MapFeaturesUtils instance
+        social_features_utils_instance: SocialFeaturesUtils instance
+
+    """
+    count = 0
+    args = parse_arguments()
+    all_rows = []
+    feature_columns, scene_rows = list(), dict()
+
+    # Enumerate over the batch starting at start_idx
+    for seq in sequences[start_idx:start_idx + args.batch_size]:
+
+        if not seq.endswith(".csv"):
+            continue
+        
+        seq_file_path = f"{args.data_dir}/{seq}"
+        seq_id = int(seq.split(".")[0])
+
+        # Compute social and map features
+        feature_columns, scene_rows = compute_features(
+            seq_id, seq_file_path, map_features_utils_instance,
+            social_features_utils_instance,
+            argoverse_map_api_instance)
+        count += 1
+
+        print("DEBUG REMOVE: OUTSIDE feature_columns:", feature_columns)
+        print("DEBUG REMOVE: OUTSIDE Scene rows: ", scene_rows)
+
+        # Merge the features for all agents and all scenes
+        all_rows.extend(scene_rows)
+
+        print(
+            f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
+        )
+
+    assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE, feature_columns: {}".format(feature_columns)
+    assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
+    
+    # Create dataframe for this batch
+    data_df = pd.DataFrame(
+        all_rows,
+        columns=feature_columns,
+    )
+
+    # Save the computed features for all the sequences in the batch as a single file
+    os.makedirs(save_dir, exist_ok=True)
+    data_df.to_pickle(
+        f"{save_dir}/forecasting_features_{args.mode}_{args.feature_type}_{start_idx}_{start_idx + args.batch_size}.pkl"
+    )
+
+
+
 
 
 def merge_saved_features(batch_save_dir: str) -> None:
@@ -277,7 +286,7 @@ if __name__ == "__main__":
     # )
 
     # Merge the batched features and clean up
-    merge_saved_features(temp_save_dir)
+    merge_saved_features(temp_save_dir) 
     shutil.rmtree(temp_save_dir)
 
     print(
