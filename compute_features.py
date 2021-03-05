@@ -134,7 +134,17 @@ def compute_features(
         columns, all_feature_rows = None, None
 
     elif args.feature_type == "lead_agent": # DENIZ add semantic map function call her
-        columns, all_feature_rows = None, None
+        columns, all_feature_rows = map_features_utils_instance.compute_lead(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            obs_len=args.obs_len,
+            seq_len=args.obs_len + args.pred_len,
+            raw_data_format=RAW_DATA_FORMAT,
+            mode=args.mode,
+            multi_agent=args.multi_agent,
+            avm=avm
+        )
 
     else:
         assert False, "Invalid feature type."
@@ -182,15 +192,15 @@ def load_seq_save_features(
             argoverse_map_api_instance)
         count += 1
 
-        print("DEBUG REMOVE: OUTSIDE feature_columns:", feature_columns)
-        print("DEBUG REMOVE: OUTSIDE Scene rows: ", scene_rows)
+        # print("DEBUG REMOVE: OUTSIDE feature_columns:", feature_columns)
+        # print("DEBUG REMOVE: OUTSIDE Scene rows: ", scene_rows)
 
         # Merge the features for all agents and all scenes
         all_rows.extend(scene_rows)
 
-        print(
-            f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        )
+        # print(
+        #     f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
+        # )
 
     assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE, feature_columns: {}".format(feature_columns)
     assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
