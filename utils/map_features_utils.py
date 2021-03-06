@@ -698,8 +698,7 @@ class MapFeaturesUtils:
             mode="lanes_only"
         )
 
-        # Set return columns
-        columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "LANE_SEGMENTS", "ORACLE_CENTERLINE" ]
+
 
         # Simple check to see if the lane segments and centerlines are the same length
         assert len(candidate_centerlines) == len(candidate_lane_segments), "Lane candidates do not match lane segments."
@@ -710,6 +709,9 @@ class MapFeaturesUtils:
         for i in range(len(candidate_centerlines)):
             centerline_tuples.append((i, candidate_centerlines[i]))
             lane_segment_tuples.append((i, candidate_lane_segments[i]))
+
+        # Set return columns
+        columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "LANE_SEGMENTS", "ORACLE_CENTERLINE" ]
 
         # Construct the return row
         rows = [ [ seq_id, track_id, centerline_tuples, lane_segment_tuples, oracle_centerline ] ]

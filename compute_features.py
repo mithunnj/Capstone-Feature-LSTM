@@ -73,12 +73,15 @@ def parse_arguments() -> Any:
                         help="If true, compute features will only compute the lane selection features.")
     return parser.parse_args()
 
+
 def compute_features(
         seq_id: int,
         seq_path: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
-        avm: ArgoverseMap
+        avm: ArgoverseMap,
+        precomputed_lanes: pd.DataFrame,
+        precomputed_physics: pd.DataFrame
 ) -> Tuple[list, list]:
     """Compute features for all.
 
@@ -110,6 +113,7 @@ def compute_features(
         agent_list = scene_df[scene_df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique().tolist()
 
     # Call function for the given feature type
+    print(f"Computing \"{args.feature_type}\" features.")
     if args.feature_type == "testing": # Temp values for testing
         columns = ["SEQUENCE", "TRACK_ID", "MY_FEATURE"]
         all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ], [ seq_id + 1, agent_list[0], 2.0 ]]
@@ -152,14 +156,15 @@ def compute_features(
 
     return columns, all_feature_rows
 
-
 def load_seq_save_features(
         start_idx: int,
         sequences: List[str],
         save_dir: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
-        argoverse_map_api_instance: ArgoverseMap
+        argoverse_map_api_instance: ArgoverseMap,
+        precomputed_lanes: pd.DataFrame,
+        precomputed_physics: pd.DataFrame
 ) -> None:
     """Load sequences, compute features, and save them.
     
@@ -174,10 +179,11 @@ def load_seq_save_features(
     count = 0
     args = parse_arguments()
     all_rows = []
+
     feature_columns, scene_rows = list(), dict()
 
     # Enumerate over the batch starting at start_idx
-    for seq in sequences[start_idx:start_idx + args.batch_size]:
+    for seq in sequences[start_idx : start_idx + args.batch_size]:
 
         if not seq.endswith(".csv"):
             continue
@@ -189,22 +195,21 @@ def load_seq_save_features(
         feature_columns, scene_rows = compute_features(
             seq_id, seq_file_path, map_features_utils_instance,
             social_features_utils_instance,
-            argoverse_map_api_instance)
+            argoverse_map_api_instance,
+            precomputed_lanes,
+            precomputed_physics)
         count += 1
-
-        # print("DEBUG REMOVE: OUTSIDE feature_columns:", feature_columns)
-        # print("DEBUG REMOVE: OUTSIDE Scene rows: ", scene_rows)
 
         # Merge the features for all agents and all scenes
         all_rows.extend(scene_rows)
 
-        # print(
-        #     f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        # )
+        print(
+            f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
+        )
 
-    assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE, feature_columns: {}".format(feature_columns)
+    assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE"
     assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
-    
+
     # Create dataframe for this batch
     data_df = pd.DataFrame(
         all_rows,
@@ -216,9 +221,6 @@ def load_seq_save_features(
     data_df.to_pickle(
         f"{save_dir}/forecasting_features_{args.mode}_{args.feature_type}_{start_idx}_{start_idx + args.batch_size}.pkl"
     )
-
-
-
 
 
 def merge_saved_features(batch_save_dir: str) -> None:
@@ -248,6 +250,15 @@ def merge_saved_features(batch_save_dir: str) -> None:
         f"{args.feature_dir}/forecasting_features_{args.mode}_{args.feature_type}.pkl")
 
 
+def load_precomputed_features(args, feature_type):
+    """Load the specified precomputed features."""
+
+    feature_path = f"{args.feature_dir}/forecasting_features_{args.mode}_{feature_type}.pkl"
+    print(f"Loading precomputed {feature_type}... {feature_path}")
+    loaded_features = pkl.load( open( feature_path, "rb" ) )
+    return pd.DataFrame(loaded_features)
+
+
 if __name__ == "__main__":
     """Load sequences and save the computed features."""
     args = parse_arguments()
@@ -268,6 +279,16 @@ if __name__ == "__main__":
     argoverse_map_api_instance = ArgoverseMap()
     social_features_utils_instance = None # SocialFeaturesUtils()
 
+    # If required, load precomputed candidate lane pickle file
+    precomputed_lanes = None
+    if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
+        precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
+
+    # If required, load precomputed physics pickle files
+    precomputed_physics = None
+    if FEATURE_TYPES[args.feature_type]["uses_physics"]:
+        precomputed_physics = load_precomputed_features(args, "physics")
+
     # Get list of scenes and create temp directory
     sequences = os.listdir(args.data_dir)
     temp_save_dir = tempfile.mkdtemp()
@@ -282,7 +303,9 @@ if __name__ == "__main__":
         temp_save_dir,
         map_features_utils_instance,
         social_features_utils_instance,
-        argoverse_map_api_instance
+        argoverse_map_api_instance,
+        precomputed_lanes,
+        precomputed_physics
     ) for i in range(0, num_sequences, args.batch_size))
 
     # Switch the above parrallel call to this if visualizing with cProfile
