@@ -222,6 +222,7 @@ def load_seq_save_features(
         f"{save_dir}/forecasting_features_{args.mode}_{args.feature_type}_{start_idx}_{start_idx + args.batch_size}.pkl"
     )
 
+
 def merge_saved_features(batch_save_dir: str) -> None:
     """Merge features saved by parallel jobs.
 
