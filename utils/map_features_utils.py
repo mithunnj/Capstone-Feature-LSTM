@@ -966,7 +966,7 @@ class MapFeaturesUtils:
             actor_info_back.clear()
         return tuple(leading_actor), tuple(following_actor), tuple(leading_actor_dist), tuple(following_actor_dist), \
                 tuple(following_x), tuple(following_y), tuple(following_vel_x), tuple(following_vel_y), tuple(following_acc_x), \
-                tuple(following_acc_y), tuple(following_jerk_x), tuple(following_jerk_y), tuple(following_yaw, tuple(following_yaw_rate), \
+                tuple(following_acc_y), tuple(following_jerk_x), tuple(following_jerk_y), tuple(following_yaw), tuple(following_yaw_rate), \
                 tuple(leading_x), tuple(leading_y), tuple(leading_vel_x), tuple(leading_vel_y), tuple(leading_acc_x), \
                 tuple(leading_acc_y), tuple(leading_jerk_x), tuple(leading_jerk_y), tuple(leading_yaw), tuple(leading_yaw_rate)
 
