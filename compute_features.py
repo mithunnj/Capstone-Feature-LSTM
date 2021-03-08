@@ -221,7 +221,7 @@ def load_seq_save_features(
 
     # Save the ml feature data format
     if args.feature_type == "physics":
-        save_ml_physics_features(all_rows)
+        save_ml_physics_features(all_rows, args.mode)
 
     # Save the computed features for all the sequences in the batch as a single file
     os.makedirs(save_dir, exist_ok=True)

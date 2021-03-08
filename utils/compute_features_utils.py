@@ -19,7 +19,6 @@ import pickle as pkl
 CURR_DIR = os.getcwd() if os.getcwd().split('/')[-1] == "Capstone_Social_LSTM" else os.path.dirname(os.getcwd())
 DATA_DIR = CURR_DIR + "/data"
 COMPUTE_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features"
-ML_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features/ML_FEATURES"
 
 def calc_magnitude(x, y):
     '''
@@ -136,10 +135,11 @@ def compute_physics_features(seq_path):
 
     return column_headings, total_data
 
-def save_ml_physics_features(data):
+def save_ml_physics_features(data, mode):
     '''
     data: This is an array from the compute_physics features saved in the format required for training
         Each row is a track_id, and all the physics features are can be passed in sub lists using the following indices:
+    mode: Parsed from args.mode and can be any of the following (specified by user): train/val/test
 
         Given a sublist of the main data array (each row represents a single track id), you can parse it in the following way:
 
@@ -163,14 +163,14 @@ def save_ml_physics_features(data):
     agent_id = df[df['OBJECT_TYPE'] == "AGENT"]["TRACK_ID"].tolist()[0] # Identify the AGENT_ID in this data file
     
     # Save all the track_id information 
-    with open(ML_FEATURES_SAVE_DIR + '/{}_ALL_TRACK_ID_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle_A:
+    with open(COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_{}_physics_all.pkl'.format(mode), 'wb') as filehandle_A:
         pkl.dump(data, filehandle_A)
 
     filehandle_A.close()
 
     # Save agent information only
     agent_data = [info for info in data if info[1] == agent_id]
-    with open(ML_FEATURES_SAVE_DIR + '/{}_AGENT_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle_B:
+    with open(COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_{}_physics.pkl'.format(mode), 'wb') as filehandle_B:
         pkl.dump(agent_data, filehandle_B)
 
     filehandle_B.close()
