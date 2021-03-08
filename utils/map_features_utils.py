@@ -886,17 +886,18 @@ class MapFeaturesUtils:
                 following_actor_dist.append(instant_distance)
 
                 # HERE APPEND PHYSICS FEATURES
-                following_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (df['TRACK_ID'] == sort_distances_back[0][0])]
-                following_x.append(following_physics['X'][i])
-                following_y.append(following_physics['Y'][i])
-                following_vel_x.append(following_physics['VEL_X'][i])
-                following_vel_y.append(following_physics['VEL_Y'][i])
-                following_acc_x.append(following_physics['ACC_X'][i])
-                following_acc_y.append(following_physics['ACC_Y'][i])
-                following_jerk_x.append(following_physics['JERK_X'][i])
-                following_jerk_y.append(following_physics['JERK_Y'][i])
-                following_yaw.append(following_physics['YAW'][i])
-                following_yaw_rate.append(following_physics['YAW_RATE'][i])
+                # print("FOLLOWING")
+                following_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (physics_df['TRACK_ID'] == sort_distances_back[0][0])]
+                following_x.append(following_physics['X'].values[0][i])
+                following_y.append(following_physics['Y'].values[0][i])
+                following_vel_x.append(following_physics['VEL_X'].values[0][i])
+                following_vel_y.append(following_physics['VEL_Y'].values[0][i])
+                following_acc_x.append(following_physics['ACC_X'].values[0][i])
+                following_acc_y.append(following_physics['ACC_Y'].values[0][i])
+                following_jerk_x.append(following_physics['JERK_X'].values[0][i])
+                following_jerk_y.append(following_physics['JERK_Y'].values[0][i])
+                following_yaw.append(following_physics['YAW'].values[0][i])
+                following_yaw_rate.append(following_physics['YAW_RATE'].values[0][i])
             else:
                 following_actor.append(-1)
                 following_actor_dist.append(-1)
@@ -935,17 +936,25 @@ class MapFeaturesUtils:
                 leading_actor_dist.append(instant_distance)
 
                 # APPEND PHYISCS FEATURES HERE
-                leading_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (df['TRACK_ID'] == sort_distances_front[0][0])]
-                leading_x.append(leading_physics['X'][i])
-                leading_y.append(leading_physics['Y'][i])
-                leading_vel_x.append(leading_physics['VEL_X'][i])
-                leading_vel_y.append(leading_physics['VEL_Y'][i])
-                leading_acc_x.append(leading_physics['ACC_X'][i])
-                leading_acc_y.append(leading_physics['ACC_Y'][i])
-                leading_jerk_x.append(leading_physics['JERK_X'][i])
-                leading_jerk_y.append(leading_physics['JERK_Y'][i])
-                leading_yaw.append(leading_physics['YAW'][i])
-                leading_yaw_rate.append(leading_physics['YAW_RATE'][i])
+                leading_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (physics_df['TRACK_ID'] == sort_distances_front[0][0])]
+                # # Uncomment to debug
+                # print("SEQUENCE_ID", seq_id)
+                # print(physics_df)
+                # print("LEADING")
+                # print(leading_physics)
+                # print(leading_physics['X'])
+                # print(leading_physics['X'].values[0][0])
+                # print(leading_physics['X'].values[0][1])
+                leading_x.append(leading_physics['X'].values[0][i])
+                leading_y.append(leading_physics['Y'].values[0][i])
+                leading_vel_x.append(leading_physics['VEL_X'].values[0][i])
+                leading_vel_y.append(leading_physics['VEL_Y'].values[0][i])
+                leading_acc_x.append(leading_physics['ACC_X'].values[0][i])
+                leading_acc_y.append(leading_physics['ACC_Y'].values[0][i])
+                leading_jerk_x.append(leading_physics['JERK_X'].values[0][i])
+                leading_jerk_y.append(leading_physics['JERK_Y'].values[0][i])
+                leading_yaw.append(leading_physics['YAW'].values[0][i])
+                leading_yaw_rate.append(leading_physics['YAW_RATE'].values[0][i])
 
             else:
                 leading_actor.append(-1)
