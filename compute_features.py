@@ -282,9 +282,8 @@ if __name__ == "__main__":
 
     # If required, load precomputed candidate lane pickle file
     precomputed_lanes = None
-    # uncomment to use lane precomputed features
-    # if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
-    #     precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
+    if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
+        precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
 
     # If required, load precomputed physics pickle files
     precomputed_physics = None
