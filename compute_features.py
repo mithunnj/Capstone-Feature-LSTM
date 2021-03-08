@@ -148,7 +148,8 @@ def compute_features(
             raw_data_format=RAW_DATA_FORMAT,
             mode=args.mode,
             multi_agent=args.multi_agent,
-            avm=avm
+            avm=avm,
+            precomputed_physics=precomputed_physics
         )
 
     else:
@@ -287,8 +288,9 @@ if __name__ == "__main__":
 
     # If required, load precomputed candidate lane pickle file
     precomputed_lanes = None
-    if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
-        precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
+    # uncomment to use lane precomputed features
+    # if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
+    #     precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
 
     # If required, load precomputed physics pickle files
     precomputed_physics = None
