@@ -157,12 +157,23 @@ def save_ml_physics_features(data):
         - Index 11 <list>: "YAW"
         - Index 12 <list>: "YAW_RATE"
     '''
-    seq = str(data[0][0]).split('/')[-1].split('.')[0] # Parse the file name of the data file
+    fp = str(data[0][0])
+    seq = fp.split('/')[-1].split('.')[0] # Parse the file name of the data file
+    df = pd.read_csv(fp, dtype={"TIMESTAMP": str})
+    agent_id = df[df['OBJECT_TYPE'] == "AGENT"]["TRACK_ID"].tolist()[0] # Identify the AGENT_ID in this data file
+    
+    # Save all the track_id information 
+    with open(ML_FEATURES_SAVE_DIR + '/{}_ALL_TRACK_ID_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle_A:
+        pkl.dump(data, filehandle_A)
 
-    with open(ML_FEATURES_SAVE_DIR + '/{}_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle:
-        pkl.dump(data, filehandle)
+    filehandle_A.close()
 
-    filehandle.close()
+    # Save agent information only
+    agent_data = [info for info in data if info[1] == agent_id]
+    with open(ML_FEATURES_SAVE_DIR + '/{}_AGENT_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle_B:
+        pkl.dump(agent_data, filehandle_B)
+
+    filehandle_B.close()
 
     return
 
