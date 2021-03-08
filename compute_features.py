@@ -133,7 +133,7 @@ def compute_features(
         )
  
     elif args.feature_type == "physics": # MITHUN add physics function call here
-        columns, all_feature_rows = compute_physics_features(seq_path)
+        columns, all_feature_rows = compute_physics_features(seq_path, seq_id)
 
     elif args.feature_type == "semantic_map": # FARID add semantic map function call here
         columns, all_feature_rows = None, None
@@ -221,7 +221,7 @@ def load_seq_save_features(
 
     # Save the ml feature data format
     if args.feature_type == "physics":
-        save_ml_physics_features(all_rows, args.mode)
+        save_ml_physics_features(all_rows, args.mode, seq_file_path, args.obs_len)
 
     # Save the computed features for all the sequences in the batch as a single file
     os.makedirs(save_dir, exist_ok=True)
