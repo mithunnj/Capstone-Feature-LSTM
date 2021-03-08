@@ -24,6 +24,7 @@ from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE, FEATURE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
 from utils.compute_features_utils import compute_physics_features 
+from utils.compute_features_utils import save_ml_physics_features
 
 
 def parse_arguments() -> Any:
@@ -157,6 +158,7 @@ def compute_features(
 
     return columns, all_feature_rows
 
+
 def load_seq_save_features(
         start_idx: int,
         sequences: List[str],
@@ -216,6 +218,10 @@ def load_seq_save_features(
         all_rows,
         columns=feature_columns,
     )
+
+    # Save the ml feature data format
+    if args.feature_type == "physics":
+        save_ml_physics_features(all_rows, args.mode)
 
     # Save the computed features for all the sequences in the batch as a single file
     os.makedirs(save_dir, exist_ok=True)

@@ -134,3 +134,59 @@ def compute_physics_features(seq_path):
         total_data.append(agent_data)
 
     return column_headings, total_data
+
+def save_ml_physics_features(data, mode):
+    '''
+    data: This is an array from the compute_physics features saved in the format required for training
+        Each row is a track_id, and all the physics features are can be passed in sub lists using the following indices:
+    mode: Parsed from args.mode and can be any of the following (specified by user): train/val/test
+
+        Given a sublist of the main data array (each row represents a single track id), you can parse it in the following way:
+
+        - Index 0 <str>: "SEQUENCE"
+        - Index 1 <str>: "TRACK_ID"
+        - Index 2 <list>: "TIMESTAMP"
+        - Index 3 <list>: "X"
+        - Index 4 <list>: "Y"
+        - Index 5 <list>: "VEL_X"
+        - Index 6 <list>: "VEL_Y"
+        - Index 7 <list>: "ACC_X"
+        - Index 8 <list>: "ACC_Y"
+        - Index 9 <list>: "JERK_X"
+        - Index 10 <list>: "JERK_Y"
+        - Index 11 <list>: "YAW"
+        - Index 12 <list>: "YAW_RATE"
+    '''
+    fp = str(data[0][0])
+    seq = fp.split('/')[-1].split('.')[0] # Parse the file name of the data file
+    df = pd.read_csv(fp, dtype={"TIMESTAMP": str})
+    agent_id = df[df['OBJECT_TYPE'] == "AGENT"]["TRACK_ID"].tolist()[0] # Identify the AGENT_ID in this data file
+    
+    # Save all the track_id information 
+    with open(COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_{}_physics_all.pkl'.format(mode), 'wb') as filehandle_A:
+        pkl.dump(data, filehandle_A)
+
+    filehandle_A.close()
+
+    # Save agent information only
+    agent_data = [info for info in data if info[1] == agent_id]
+    with open(COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_{}_physics.pkl'.format(mode), 'wb') as filehandle_B:
+        pkl.dump(agent_data, filehandle_B)
+
+    filehandle_B.close()
+
+    return
+
+'''
+#NOTE: UNCOMMENT THIS IF YOU WANT TO KNOW HOW TO LOAD PHYSICS DATA
+def sample_open_physics_ml_features():
+    with open(ML_FEATURES_SAVE_DIR + '/2645_PHYSICS_ML_FEATURES.pkl', 'rb') as f:
+        x = pkl.load(f)
+
+        print("Track ID info: {}\n".format(x[0][1]))
+        print("X for Track ID: {}".format(x[0][3]))
+
+    return
+
+sample_open_physics_ml_features()
+'''
