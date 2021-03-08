@@ -19,6 +19,7 @@ import pickle as pkl
 CURR_DIR = os.getcwd() if os.getcwd().split('/')[-1] == "Capstone_Social_LSTM" else os.path.dirname(os.getcwd())
 DATA_DIR = CURR_DIR + "/data"
 COMPUTE_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features"
+ML_FEATURES_SAVE_DIR = CURR_DIR + "/computed_features/ML_FEATURES"
 
 def calc_magnitude(x, y):
     '''
@@ -134,3 +135,47 @@ def compute_physics_features(seq_path):
         total_data.append(agent_data)
 
     return column_headings, total_data
+
+def save_ml_physics_features(data):
+    '''
+    data: This is an array from the compute_physics features saved in the format required for training
+        Each row is a track_id, and all the physics features are can be passed in sub lists using the following indices:
+
+        Given a sublist of the main data array (each row represents a single track id), you can parse it in the following way:
+
+        - Index 0 <str>: "SEQUENCE"
+        - Index 1 <str>: "TRACK_ID"
+        - Index 2 <list>: "TIMESTAMP"
+        - Index 3 <list>: "X"
+        - Index 4 <list>: "Y"
+        - Index 5 <list>: "VEL_X"
+        - Index 6 <list>: "VEL_Y"
+        - Index 7 <list>: "ACC_X"
+        - Index 8 <list>: "ACC_Y"
+        - Index 9 <list>: "JERK_X"
+        - Index 10 <list>: "JERK_Y"
+        - Index 11 <list>: "YAW"
+        - Index 12 <list>: "YAW_RATE"
+    '''
+    seq = str(data[0][0]).split('/')[-1].split('.')[0] # Parse the file name of the data file
+
+    with open(ML_FEATURES_SAVE_DIR + '/{}_PHYSICS_ML_FEATURES.pkl'.format(seq), 'wb') as filehandle:
+        pkl.dump(data, filehandle)
+
+    filehandle.close()
+
+    return
+
+'''
+#NOTE: UNCOMMENT THIS IF YOU WANT TO KNOW HOW TO LOAD PHYSICS DATA
+def sample_open_physics_ml_features():
+    with open(ML_FEATURES_SAVE_DIR + '/2645_PHYSICS_ML_FEATURES.pkl', 'rb') as f:
+        x = pkl.load(f)
+
+        print("Track ID info: {}\n".format(x[0][1]))
+        print("X for Track ID: {}".format(x[0][3]))
+
+    return
+
+sample_open_physics_ml_features()
+'''
