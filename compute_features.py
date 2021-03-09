@@ -25,7 +25,7 @@ from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
 from utils.compute_features_utils import compute_physics_features 
 from utils.compute_features_utils import save_ml_physics_features
-
+from utils.compute_semantic_features import compute_semantic_features 
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -136,7 +136,14 @@ def compute_features(
         columns, all_feature_rows = compute_physics_features(seq_path, seq_id)
 
     elif args.feature_type == "semantic_map": # FARID add semantic map function call here
-        columns, all_feature_rows = None, None
+        columns, all_feature_rows = compute_semantic_features(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            precomp_lanes = precomputed_lanes,
+            raw_data_format = RAW_DATA_FORMAT,
+            map_inst = avm
+        )
 
     elif args.feature_type == "lead_agent": # DENIZ add semantic map function call her
         columns, all_feature_rows = map_features_utils_instance.compute_lead(
