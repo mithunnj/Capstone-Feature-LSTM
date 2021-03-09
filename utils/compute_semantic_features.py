@@ -104,7 +104,7 @@ def compute_semantic_features(scene_df, agent_list, precomp_lanes,raw_data_forma
 	dist_to_stop_per_track = []
 	dist_to_three_plus_per_track = []
 	turning_direction_per_track = []
-
+	centerline_list = []
 
 	for s,centerline in enumerate(centerlines):
 		dist_to_intersect_per_centerline  = []
@@ -144,22 +144,22 @@ def compute_semantic_features(scene_df, agent_list, precomp_lanes,raw_data_forma
 			turning_direction = directions[segment_index[c]]
 			turning_direction_per_centerline.append(turning_direction)
 
+		centerline_list.append((s, centerline))
 
-		dist_to_intersect_per_track.append([s, dist_to_intersect_per_centerline])
-		dist_to_stop_per_track.append([s, dist_to_stop_per_centerline])
-		dist_to_three_plus_per_track.append([s, dist_to_three_plus_per_centerline])
-		turning_direction_per_track.append([s, turning_direction_per_centerline])
 
-	dist_to_intersect_feature.append(dist_to_intersect_per_track)
-	dist_to_stop_feature.append(dist_to_stop_per_track)
-	dist_to_three_plus_feature.append(dist_to_three_plus_per_track)
-	turning_direction_feature.append(turning_direction_per_track)
+		dist_to_intersect_per_track.append((s, dist_to_intersect_per_centerline))
+		dist_to_stop_per_track.append((s, dist_to_stop_per_centerline))
+		dist_to_three_plus_per_track.append((s, dist_to_three_plus_per_centerline))
+		turning_direction_per_track.append((s, turning_direction_per_centerline))
 
-	sequence_list = []
-	sequence_list.append(seq_id)
+	#dist_to_intersect_feature.append(dist_to_intersect_per_track)
+	#dist_to_stop_feature.append(dist_to_stop_per_track)
+	#dist_to_three_plus_feature.append(dist_to_three_plus_per_track)
+	#turning_direction_feature.append(turning_direction_per_track)
 
-	columns = ["SEQUENCE", "TRACK_ID", "DIST_TO_INTERSECTION", "DIST_TO_STOP", "DIST_TO_THREE_PLUS", "TURNING_DIRECTION"]
-	rows = [ [ sequence_list, track_id_list, dist_to_intersect_feature, dist_to_stop_feature, dist_to_three_plus_feature, turning_direction_feature ] ]
+
+	columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "DIST_TO_INTERSECTION", "DIST_TO_STOP", "DIST_TO_THREE_PLUS", "TURNING_DIRECTION"]
+	rows = [ [ seq_id, track_id, centerline_list, dist_to_intersect_per_track, dist_to_stop_per_track, dist_to_three_plus_per_track, turning_direction_per_track ] ]
 
 
 	return columns, rows
