@@ -267,8 +267,8 @@ def load_precomputed_features(args, feature_type):
 
     feature_path = f"{args.feature_dir}/forecasting_features_{args.mode}_{feature_type}.pkl"
     print(f"Loading precomputed {feature_type}... {feature_path}")
-    loaded_features = pkl.load( open( feature_path, "rb" ) )
-    return pd.DataFrame(loaded_features)
+    loaded_df = pd.read_pickle(feature_path)
+    return loaded_df
 
 
 if __name__ == "__main__":
