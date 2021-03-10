@@ -113,7 +113,6 @@ def compute_features(
         agent_list = scene_df[scene_df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique().tolist()
 
     # Call function for the given feature type
-    print(f"Computing \"{args.feature_type}\" features.")
     if args.feature_type == "testing": # Temp values for testing
         columns = ["SEQUENCE", "TRACK_ID", "MY_FEATURE"]
         all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ], [ seq_id + 1, agent_list[0], 2.0 ]]
@@ -176,14 +175,13 @@ def load_seq_save_features(
         social_features_utils_instance: SocialFeaturesUtils instance
 
     """
-    count = 0
     args = parse_arguments()
     all_rows = []
 
     feature_columns, scene_rows = list(), dict()
 
     # Enumerate over the batch starting at start_idx
-    for seq in sequences[start_idx : start_idx + args.batch_size]:
+    for count, seq in enumerate(sequences[start_idx : start_idx + args.batch_size]):
 
         if not seq.endswith(".csv"):
             continue
@@ -198,14 +196,14 @@ def load_seq_save_features(
             argoverse_map_api_instance,
             precomputed_lanes,
             precomputed_physics)
-        count += 1
 
         # Merge the features for all agents and all scenes
         all_rows.extend(scene_rows)
 
-        print(
-            f"{args.mode}/{args.feature_type}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        )
+        if count % 200 == 0:
+            print(
+                f"count:{count}/total:{len(sequences)} with start {start_idx} and end {start_idx + args.batch_size}"
+            )
 
     assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE"
     assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
