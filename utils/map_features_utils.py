@@ -470,16 +470,16 @@ class MapFeaturesUtils:
         following_actor_dist = []
         #print(candidate_centerlines)
         c_line_idx = 0
-        for c_line in candidate_centerlines:
-            leading_actor_idx, following_actor_idx, \
-                leading_actor_dist_idx, following_actor_dist_idx = \
-                self.get_lead_and_follow(df, obs_len, agent_track, removed_agent_ids, \
-                c_line, raw_data_format)
-            leading_actor.append(leading_actor_idx)
-            following_actor.append(following_actor_idx)
-            leading_actor_dist.append(leading_actor_dist_idx)
-            following_actor_dist.append(following_actor_dist_idx)
-            c_line_idx += 1
+        # for c_line in candidate_centerlines:
+        #     leading_actor_idx, following_actor_idx, \
+        #         leading_actor_dist_idx, following_actor_dist_idx = \
+        #         self.get_lead_and_follow(df, obs_len, agent_track, removed_agent_ids, \
+        #         c_line, raw_data_format)
+        #     leading_actor.append(leading_actor_idx)
+        #     following_actor.append(following_actor_idx)
+        #     leading_actor_dist.append(leading_actor_dist_idx)
+        #     following_actor_dist.append(following_actor_dist_idx)
+        #     c_line_idx += 1
 
         map_feature_helpers = {
             "LEADING_VEHICLES": leading_actor,
@@ -507,7 +507,8 @@ class MapFeaturesUtils:
             raw_data_format: Dict[str, int],
             mode: str,
             multi_agent: bool,
-            avm: ArgoverseMap
+            avm: ArgoverseMap,
+            precomputed_physics: pd.DataFrame
     ) -> Tuple[list, list]:
         """Compute candidate centerlines for a given sequence.
 
@@ -541,7 +542,6 @@ class MapFeaturesUtils:
             raw_data_format["X"], raw_data_format["Y"]
         ]].astype("float")
 
-        
         # Get API for Argo Dataset map
         city_name = agent_track[0, raw_data_format["CITY_NAME"]]
 
@@ -568,15 +568,12 @@ class MapFeaturesUtils:
             mode="lanes_only"
         )
 
-
-
         # here, do the lead and following agent assignments
         initial_agent_ids = scene_df["TRACK_ID"].values # All the track_ids (unique actor identifier in .csv dataset)
         initial_agent_ids = list(dict.fromkeys(initial_agent_ids)) # Remove duplicates from IDs
         removed_agent_ids = initial_agent_ids
         # Remove the current agent we are calculating the features for
         removed_agent_ids.remove(track_id)
-
 
         # here need to loop thru candidate centerlines to return for every candidate centerline.
         # need to add normal dist. threshold bc the lead vehicle might be returned even tho it is far from the lane
@@ -587,17 +584,68 @@ class MapFeaturesUtils:
         following_actor = []
         leading_actor_dist = []
         following_actor_dist = []
+
+        following_x = []
+        following_y = []
+        following_vel_x = []
+        following_vel_y = []
+        following_acc_x = []
+        following_acc_y = []
+        following_jerk_x = []
+        following_jerk_y = []
+        following_yaw = []
+        following_yaw_rate = []
+
+        leading_x = []
+        leading_y = []
+        leading_vel_x = []
+        leading_vel_y = []
+        leading_acc_x = []
+        leading_acc_y = []
+        leading_jerk_x = []
+        leading_jerk_y = []
+        leading_yaw = []
+        leading_yaw_rate = []
+
         #print(candidate_centerlines)
         c_line_idx = 0
         for c_line in candidate_centerlines:
             leading_actor_idx, following_actor_idx, \
-                leading_actor_dist_idx, following_actor_dist_idx = \
-                self.get_lead_and_follow(scene_df, obs_len, agent_track, removed_agent_ids, \
-                c_line, raw_data_format)
+                leading_actor_dist_idx, following_actor_dist_idx, \
+                following_x_idx, following_y_idx, following_vel_x_idx, following_vel_y_idx, following_acc_x_idx, \
+                following_acc_y_idx, following_jerk_x_idx, following_jerk_y_idx, following_yaw_idx, following_yaw_rate_idx, \
+                leading_x_idx, leading_y_idx, leading_vel_x_idx, leading_vel_y_idx, leading_acc_x_idx, \
+                leading_acc_y_idx, leading_jerk_x_idx, leading_jerk_y_idx, leading_yaw_idx, leading_yaw_rate_idx = \
+                self.get_lead_and_follow(seq_id, track_id, scene_df, obs_len, agent_track, removed_agent_ids, \
+                c_line, raw_data_format, precomputed_physics)
+
             leading_actor.append((c_line_idx, leading_actor_idx))
             following_actor.append((c_line_idx, following_actor_idx))
             leading_actor_dist.append((c_line_idx, leading_actor_dist_idx))
             following_actor_dist.append((c_line_idx, following_actor_dist_idx))
+
+            following_x.append((c_line_idx, following_x_idx))
+            following_y.append((c_line_idx, following_y_idx))
+            following_vel_x.append((c_line_idx, following_vel_x_idx))
+            following_vel_y.append((c_line_idx, following_vel_y_idx))
+            following_acc_x.append((c_line_idx, following_acc_x_idx))
+            following_acc_y.append((c_line_idx, following_acc_y_idx))
+            following_jerk_x.append((c_line_idx, following_jerk_x_idx))
+            following_jerk_y.append((c_line_idx, following_jerk_y_idx))
+            following_yaw.append((c_line_idx, following_yaw_idx))
+            following_yaw_rate.append((c_line_idx, following_yaw_rate_idx))
+
+            leading_x.append((c_line_idx, leading_x_idx))
+            leading_y.append((c_line_idx, leading_y_idx))
+            leading_vel_x.append((c_line_idx, leading_vel_x_idx))
+            leading_vel_y.append((c_line_idx, leading_vel_y_idx))
+            leading_acc_x.append((c_line_idx, leading_acc_x_idx))
+            leading_acc_y.append((c_line_idx, leading_acc_y_idx))
+            leading_jerk_x.append((c_line_idx, leading_jerk_x_idx))
+            leading_jerk_y.append((c_line_idx, leading_jerk_y_idx))
+            leading_yaw.append((c_line_idx, leading_yaw_idx))
+            leading_yaw_rate.append((c_line_idx, leading_yaw_rate_idx))
+
             c_line_idx += 1
 
         # Convert list of centerlines/segments to tuple format (centerline_id, data)
@@ -606,26 +654,19 @@ class MapFeaturesUtils:
             centerline_tuples.append((i, candidate_centerlines[i]))
 
         # Set return columns
-        columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "LEAD_VEHICLES", "FOLLOWING_VEHICLES", "LEAD_DISTANCES", "FOLLOWING_DISTANCES" ]
+        columns = ["SEQUENCE", "TRACK_ID", "CENTERLINES", "LEAD_VEHICLES", "FOLLOWING_VEHICLES", "LEAD_DISTANCES", "FOLLOWING_DISTANCES", \
+            "FOLLOWING_X", "FOLLOWING_Y", "FOLLOWING_VEL_X", "FOLLOWING_VEL_Y", "FOLLOWING_ACC_X", "FOLLOWING_ACC_Y", "FOLLOWING_JERK_X", "FOLLOWING_JERK_Y", "FOLLOWING_YAW", "FOLLOWING_YAW_RATE", \
+            "LEADING_X", "LEADING_Y", "LEADING_VEL_X", "LEADING_VEL_Y", "LEADING_ACC_X", "LEADING_ACC_Y", "LEADING_JERK_X", "LEADING_JERK_Y", "LEADING_YAW", "LEADING_YAW_RATE"]
 
         # Construct the return row
-        rows = [ [ seq_id, track_id, centerline_tuples, leading_actor, following_actor, leading_actor_dist, following_actor_dist ] ]
+        rows = [ [ seq_id, track_id, centerline_tuples, leading_actor, following_actor, leading_actor_dist, following_actor_dist, \
+                following_x, following_y, following_vel_x, following_vel_y, following_acc_x, \
+                following_acc_y, following_jerk_x, following_jerk_y, following_yaw, following_yaw_rate, \
+                leading_x, leading_y, leading_vel_x, leading_vel_y, leading_acc_x, \
+                leading_acc_y, leading_jerk_x, leading_jerk_y, leading_yaw, leading_yaw_rate ] ]
         # print(rows)
+
         return columns, rows
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     def compute_lane_candidates(
             self,
@@ -698,8 +739,6 @@ class MapFeaturesUtils:
             mode="lanes_only"
         )
 
-
-
         # Simple check to see if the lane segments and centerlines are the same length
         assert len(candidate_centerlines) == len(candidate_lane_segments), "Lane candidates do not match lane segments."
 
@@ -721,12 +760,15 @@ class MapFeaturesUtils:
 
     def get_lead_and_follow(
             self,
+            seq_id,
+            track_id,
             df,
             obs_len,
             agent_track,
             removed_agent_ids,
             c_line,
             raw_data_format,
+            physics_df,
     ):
         # need to add normal dist. threshold bc the lead vehicle might be returned even tho it is far from the lane
         # since algorthm returns the closest currently
@@ -747,6 +789,29 @@ class MapFeaturesUtils:
         following_actor_dist = list()
         actor_info_front = dict()
         actor_info_back = dict()
+
+        following_x = list()
+        following_y = list()
+        following_vel_x = list()
+        following_vel_y = list()
+        following_acc_x = list()
+        following_acc_y = list()
+        following_jerk_x = list()
+        following_jerk_y = list()
+        following_yaw = list()
+        following_yaw_rate = list()
+
+        leading_x = list()
+        leading_y = list()
+        leading_vel_x = list()
+        leading_vel_y = list()
+        leading_acc_x = list()
+        leading_acc_y = list()
+        leading_jerk_x = list()
+        leading_jerk_y = list()
+        leading_yaw = list()
+        leading_yaw_rate = list()
+
         for i in range(obs_len):
             lead_score = 0
             lead_id = 0
@@ -771,6 +836,7 @@ class MapFeaturesUtils:
 
                 instant_distance = np.sqrt((agent_x - actor_x)**2 + (agent_y - actor_y)**2)
 
+                # remove anything further than 5 meters here.
                 if (instant_distance >= self.NEARBY_DISTANCE_THRESHOLD):
                     continue
 
@@ -803,6 +869,10 @@ class MapFeaturesUtils:
                 following_actor.append(sort_distances_back[0][0])
 
                 actor_track = df[df["TRACK_ID"] == sort_distances_back[0][0]].values
+
+                # this shows the physics feature access works
+                # row = df[df["TRACK_ID"] == sort_distances_back[0][0]]
+                # print(row['X'])
                 actor_x, actor_y = (
                     actor_track[i, raw_data_format["X"]],
                     actor_track[i, raw_data_format["Y"]],
@@ -814,9 +884,36 @@ class MapFeaturesUtils:
                 instant_distance = np.sqrt((agent_x - actor_x)**2 + (agent_y - actor_y)**2)
                 # here you can compare instant distance with a threshold to decide
                 following_actor_dist.append(instant_distance)
+
+                # HERE APPEND PHYSICS FEATURES
+                # print("FOLLOWING")
+                following_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (physics_df['TRACK_ID'] == sort_distances_back[0][0])]
+                following_x.append(following_physics['X'].values[0][i])
+                following_y.append(following_physics['Y'].values[0][i])
+                following_vel_x.append(following_physics['VEL_X'].values[0][i])
+                following_vel_y.append(following_physics['VEL_Y'].values[0][i])
+                following_acc_x.append(following_physics['ACC_X'].values[0][i])
+                following_acc_y.append(following_physics['ACC_Y'].values[0][i])
+                following_jerk_x.append(following_physics['JERK_X'].values[0][i])
+                following_jerk_y.append(following_physics['JERK_Y'].values[0][i])
+                following_yaw.append(following_physics['YAW'].values[0][i])
+                following_yaw_rate.append(following_physics['YAW_RATE'].values[0][i])
             else:
                 following_actor.append(-1)
                 following_actor_dist.append(-1)
+                following_x.append(0)
+                following_y.append(0)
+                following_vel_x.append(0)
+                following_vel_y.append(0)
+                following_acc_x.append(0)
+                following_acc_y.append(0)
+                following_jerk_x.append(0)
+                following_jerk_y.append(0)
+                following_yaw.append(0)
+                following_yaw_rate.append(0)
+
+
+    #column_headings = ["SEQUENCE", "TRACK_ID", "TIMESTAMP", "X", "Y", "VEL_X", "VEL_Y", "ACC_X", "ACC_Y", "JERK_X", "JERK_Y", "YAW", "YAW_RATE"] 
 
 
             sort_distances_front = sorted(actor_info_front.items(), key=lambda x: x[1])
@@ -837,14 +934,50 @@ class MapFeaturesUtils:
                 instant_distance = np.sqrt((agent_x - actor_x)**2 + (agent_y - actor_y)**2)
                 # here you can compare instant distance with a threshold to decide
                 leading_actor_dist.append(instant_distance)
+
+                # APPEND PHYISCS FEATURES HERE
+                leading_physics = physics_df.loc[(physics_df['SEQUENCE'] == seq_id) & (physics_df['TRACK_ID'] == sort_distances_front[0][0])]
+                # # Uncomment to debug
+                # print("SEQUENCE_ID", seq_id)
+                # print(physics_df)
+                # print("LEADING")
+                # print(leading_physics)
+                # print(leading_physics['X'])
+                # print(leading_physics['X'].values[0][0])
+                # print(leading_physics['X'].values[0][1])
+                leading_x.append(leading_physics['X'].values[0][i])
+                leading_y.append(leading_physics['Y'].values[0][i])
+                leading_vel_x.append(leading_physics['VEL_X'].values[0][i])
+                leading_vel_y.append(leading_physics['VEL_Y'].values[0][i])
+                leading_acc_x.append(leading_physics['ACC_X'].values[0][i])
+                leading_acc_y.append(leading_physics['ACC_Y'].values[0][i])
+                leading_jerk_x.append(leading_physics['JERK_X'].values[0][i])
+                leading_jerk_y.append(leading_physics['JERK_Y'].values[0][i])
+                leading_yaw.append(leading_physics['YAW'].values[0][i])
+                leading_yaw_rate.append(leading_physics['YAW_RATE'].values[0][i])
+
             else:
                 leading_actor.append(-1)
                 leading_actor_dist.append(-1)
+                leading_x.append(0)
+                leading_y.append(0)
+                leading_vel_x.append(0)
+                leading_vel_y.append(0)
+                leading_acc_x.append(0)
+                leading_acc_y.append(0)
+                leading_jerk_x.append(0)
+                leading_jerk_y.append(0)
+                leading_yaw.append(0)
+                leading_yaw_rate.append(0)
 
             # Need to clean these up for the next timestep
             actor_info_front.clear()
             actor_info_back.clear()
-        return tuple(leading_actor), tuple(following_actor), tuple(leading_actor_dist), tuple(following_actor_dist)
+        return tuple(leading_actor), tuple(following_actor), tuple(leading_actor_dist), tuple(following_actor_dist), \
+                tuple(following_x), tuple(following_y), tuple(following_vel_x), tuple(following_vel_y), tuple(following_acc_x), \
+                tuple(following_acc_y), tuple(following_jerk_x), tuple(following_jerk_y), tuple(following_yaw), tuple(following_yaw_rate), \
+                tuple(leading_x), tuple(leading_y), tuple(leading_vel_x), tuple(leading_vel_y), tuple(leading_acc_x), \
+                tuple(leading_acc_y), tuple(leading_jerk_x), tuple(leading_jerk_y), tuple(leading_yaw), tuple(leading_yaw_rate)
 
 
 

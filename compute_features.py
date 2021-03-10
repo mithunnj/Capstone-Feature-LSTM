@@ -24,7 +24,8 @@ from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE, FEATURE
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
 from utils.compute_features_utils import compute_physics_features 
-
+from utils.compute_features_utils import save_ml_physics_features
+from utils.compute_semantic_features import compute_semantic_features 
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -131,10 +132,17 @@ def compute_features(
         )
  
     elif args.feature_type == "physics": # MITHUN add physics function call here
-        columns, all_feature_rows = compute_physics_features(seq_path)
+        columns, all_feature_rows = compute_physics_features(seq_path, seq_id)
 
     elif args.feature_type == "semantic_map": # FARID add semantic map function call here
-        columns, all_feature_rows = None, None
+        columns, all_feature_rows = compute_semantic_features(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            precomp_lanes = precomputed_lanes,
+            raw_data_format = RAW_DATA_FORMAT,
+            map_inst = avm
+        )
 
     elif args.feature_type == "lead_agent": # DENIZ add semantic map function call her
         columns, all_feature_rows = map_features_utils_instance.compute_lead(
@@ -146,7 +154,8 @@ def compute_features(
             raw_data_format=RAW_DATA_FORMAT,
             mode=args.mode,
             multi_agent=args.multi_agent,
-            avm=avm
+            avm=avm,
+            precomputed_physics=precomputed_physics
         )
 
     else:
@@ -154,6 +163,7 @@ def compute_features(
 
 
     return columns, all_feature_rows
+
 
 def load_seq_save_features(
         start_idx: int,
@@ -213,6 +223,10 @@ def load_seq_save_features(
         all_rows,
         columns=feature_columns,
     )
+
+    # Save the ml feature data format
+    if args.feature_type == "physics":
+        save_ml_physics_features(all_rows, args.mode, seq_file_path, args.obs_len)
 
     # Save the computed features for all the sequences in the batch as a single file
     os.makedirs(save_dir, exist_ok=True)
