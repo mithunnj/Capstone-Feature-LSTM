@@ -32,7 +32,7 @@ def calc_magnitude(x, y):
 
     return math.sqrt(squared_terms)
 
-def compute_physics_features(seq_path):
+def compute_physics_features(seq_path, seq_id):
     '''
     Input: seq_path <str> - This is the filepath of the .csv data file that is parsed   
         by the Argoverse utils.
@@ -73,7 +73,7 @@ def compute_physics_features(seq_path):
         agent_df = df[df['TRACK_ID'] == agent] # Agent specific data from the .csv dataframe
 
         # NEW DATA STRUCTURE
-        agent_data = [seq_path, agent] # Initiate agent data structure with SEQUENCE_ID and TRACK_ID info
+        agent_data = [seq_id, agent] # Initiate agent data structure with SEQUENCE_ID and TRACK_ID info
         timestamp, x, y, vel_x, vel_y, acc_x, acc_y, jerk_x, jerk_y, yaw, yaw_rate = list(), list(), list(), list(), list(), list(), list(), list(), list(), list(), list()
 
         for index, row in agent_df.iterrows(): # Each row represents a specific timestep of data for a specific agent (track_id)
@@ -135,7 +135,7 @@ def compute_physics_features(seq_path):
 
     return column_headings, total_data
 
-def save_ml_physics_features(data, mode):
+def save_ml_physics_features(data, mode, seq_fp, obs_len):
     '''
     data: This is an array from the compute_physics features saved in the format required for training
         Each row is a track_id, and all the physics features are can be passed in sub lists using the following indices:
@@ -157,11 +157,20 @@ def save_ml_physics_features(data, mode):
         - Index 11 <list>: "YAW"
         - Index 12 <list>: "YAW_RATE"
     '''
-    fp = str(data[0][0])
-    seq = fp.split('/')[-1].split('.')[0] # Parse the file name of the data file
-    df = pd.read_csv(fp, dtype={"TIMESTAMP": str})
+    df = pd.read_csv(seq_fp, dtype={"TIMESTAMP": str})
     agent_id = df[df['OBJECT_TYPE'] == "AGENT"]["TRACK_ID"].tolist()[0] # Identify the AGENT_ID in this data file
-    
+
+    # Check for empty lists in the data
+    fill_empty = [0.0]
+    for i in range(len(data)):
+        for j in range(2, len(data[i])):
+            data_len = len(data[i][j])
+            if data_len < obs_len: # If there is an empty list (due to lack of sequences for agent), fill with default value
+                num_missing_elemets = abs(len(data[i][j]) - obs_len)
+                padding = [0.0] * num_missing_elemets # Generate padding of the necessary size of missing elements less than obs_len
+
+                data[i][j].extend(padding) # Add the padding to the data structure element
+
     # Save all the track_id information 
     with open(COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_{}_physics_all.pkl'.format(mode), 'wb') as filehandle_A:
         pkl.dump(data, filehandle_A)
@@ -180,11 +189,15 @@ def save_ml_physics_features(data, mode):
 '''
 #NOTE: UNCOMMENT THIS IF YOU WANT TO KNOW HOW TO LOAD PHYSICS DATA
 def sample_open_physics_ml_features():
-    with open(ML_FEATURES_SAVE_DIR + '/2645_PHYSICS_ML_FEATURES.pkl', 'rb') as f:
+    fp = COMPUTE_FEATURES_SAVE_DIR + '/forecasting_features_train_physics_all.pkl'
+
+    with open(fp, 'rb') as f:
         x = pkl.load(f)
 
-        print("Track ID info: {}\n".format(x[0][1]))
-        print("X for Track ID: {}".format(x[0][3]))
+        print("\nItem #1: {}\n".format(x[0]))
+        print("\nItem #2: {}\n".format(x[-1]))
+        #print("Track ID info: {}\n".format(x[0][1]))
+        #print("X for Track ID: {}".format(x[0][3]))
 
     return
 
