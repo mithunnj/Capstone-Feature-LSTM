@@ -95,6 +95,18 @@ def compute_semantic_features(scene_df, agent_list, precomp_lanes,raw_data_forma
 	segments    = precomp_df["LANE_SEGMENTS"].values[0]
 
 	city_name = agent_df["CITY_NAME"].values[0]
+
+	try:
+		tmp = map_inst.city_lane_centerlines_dict[city_name][segments[0][1][0]]
+
+	except:
+		if city_name == 'MIA' :
+			city_name = 'PIT'
+		else:
+			city_name = 'MIA'
+
+	#print("City name: ", city_name, "Track ID: ",track_id)
+
 	lane_dict = map_inst.city_lane_centerlines_dict[city_name]
 	inf_far = 1000
 
