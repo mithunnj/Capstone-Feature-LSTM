@@ -84,13 +84,7 @@ def compute_semantic_features(scene_df, agent_list, precomp_lanes,raw_data_forma
 	turning_direction_feature  = []
 
 
-	track_id_list = agent_list[0]
-
-	city_name = scene_df["CITY_NAME"].values[0]
-	lane_dict = map_inst.city_lane_centerlines_dict[city_name]
-	inf_far = 1000
-
-	track_id=track_id_list
+	track_id = agent_list[0]
 
 	agent_df    = scene_df[scene_df["TRACK_ID"] == track_id]
 	agent_track = scene_df[scene_df["TRACK_ID"] == track_id].values
@@ -99,6 +93,22 @@ def compute_semantic_features(scene_df, agent_list, precomp_lanes,raw_data_forma
 	precomp_df  = precomp_lanes[precomp_lanes["TRACK_ID"] == track_id]
 	centerlines = precomp_df["CENTERLINES"].values[0]
 	segments    = precomp_df["LANE_SEGMENTS"].values[0]
+
+	city_name = agent_df["CITY_NAME"].values[0]
+
+	try:
+		tmp = map_inst.city_lane_centerlines_dict[city_name][segments[0][1][0]]
+
+	except:
+		if city_name == 'MIA' :
+			city_name = 'PIT'
+		else:
+			city_name = 'MIA'
+
+	#print("City name: ", city_name, "Track ID: ",track_id)
+
+	lane_dict = map_inst.city_lane_centerlines_dict[city_name]
+	inf_far = 1000
 
 	dist_to_intersect_per_track = []
 	dist_to_stop_per_track = []
