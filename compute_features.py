@@ -26,6 +26,7 @@ from utils.social_features_utils import SocialFeaturesUtils
 from utils.compute_features_utils import compute_physics_features 
 from utils.compute_features_utils import save_ml_physics_features
 from utils.compute_semantic_features import compute_semantic_features 
+from utils.compute_lane_following_features import compute_lane_following_features
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -49,7 +50,7 @@ def parse_arguments() -> Any:
     parser.add_argument("--feature_type",
                         required=True,
                         type=str,
-                        help="One of candidates_lanes/physics/semantic_map/lead_agent (stored in config).",
+                        help="One of candidates_lanes/physics/semantic_map/lead_agent/lane_following (stored in config).",
                         choices=FEATURE_TYPES.keys())
     parser.add_argument(
         "--batch_size",
@@ -118,7 +119,7 @@ def compute_features(
         columns = ["SEQUENCE", "TRACK_ID", "MY_FEATURE"]
         all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ], [ seq_id + 1, agent_list[0], 2.0 ]]
 
-    elif args.feature_type == "candidate_lanes": # SASHA add lane candidate function here
+    elif args.feature_type == "candidate_lanes":
         columns, all_feature_rows = map_features_utils_instance.compute_lane_candidates(
             seq_id=seq_id,
             scene_df=scene_df,
@@ -131,10 +132,10 @@ def compute_features(
             avm=avm
         )
  
-    elif args.feature_type == "physics": # MITHUN add physics function call here
+    elif args.feature_type == "physics":
         columns, all_feature_rows = compute_physics_features(seq_path, seq_id)
 
-    elif args.feature_type == "semantic_map": # FARID add semantic map function call here
+    elif args.feature_type == "semantic_map":
         columns, all_feature_rows = compute_semantic_features(
             seq_id=seq_id,
             scene_df=scene_df,
@@ -144,7 +145,7 @@ def compute_features(
             map_inst = avm
         )
 
-    elif args.feature_type == "lead_agent": # DENIZ add semantic map function call her
+    elif args.feature_type == "lead_agent":
         columns, all_feature_rows = map_features_utils_instance.compute_lead(
             seq_id=seq_id,
             scene_df=scene_df,
@@ -155,6 +156,18 @@ def compute_features(
             mode=args.mode,
             multi_agent=args.multi_agent,
             avm=avm,
+            precomputed_physics=precomputed_physics
+        )
+
+    elif args.feature_type == "lane_following":
+        columns, all_feature_rows = compute_lane_following_features(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            obs_len=args.obs_len,
+            agent_list=agent_list,
+            precomputed_lanes=precomputed_lanes,
+            raw_data_format=RAW_DATA_FORMAT,
+            map_inst=avm,
             precomputed_physics=precomputed_physics
         )
 
