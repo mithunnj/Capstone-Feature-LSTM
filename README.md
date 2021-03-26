@@ -2,10 +2,33 @@
 
 # Capstone Social LSTM project
 
-This repo was ported over from the Argoverse Motion Forecasting repo. All the original README notes from the Argoverse repo can be found below.
+**Problem statement**: Need for a model that performs real-time motion prediction of agents in an environment with minimal computations and low-latency.
+
+The entire final report can be found [here](https://drive.google.com/file/d/1oHxEIVLWlwn8mLux20oKNoZnX92xtBpM/view?usp=sharing).
+
+Code base for the Capstone team's solution based off of the initial Argoverse Competition repo can be found here.
+
+# University of Toronto Capstone: Real-time Prediction Models for Self-Driving
+
+- Date: March 21, 2021
+- Industry Advisor: [Blackberry QNX](https://blackberry.qnx.com/en)
+- Project ID: QNX
+- Supervisor: [Professor Steve Mann (ECE)](https://experts.engineering.utoronto.ca/steve-mann)
+
+## Team:
+
+|       Name       | Department |
+|:----------------:|:--------------:|
+|   Alexander Rudolf  |   Electrical & Computer Engineering   |
+| Deniz Akyildiz |   Electrical & Computer Engineering   |
+|   Farid Chalabi  |   Electrical & Computer Engineering   |
+|    Mithun Jothiravi  |   Mechanical Engineering   |
+|    Samarth Sinha  |  Electrical & Computer Engineering   |
 
 
 # Argoverse Motion Forecasting Baselines
+
+Initial project code base was branched off of the Argoverse competition:
 
 > Official GitHub repository for [Argoverse](https://www.argoverse.org) Motion Forecasting Baselines. This repository is released under **BSD-3-Clause-Clear License**.
 
