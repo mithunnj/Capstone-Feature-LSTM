@@ -41,7 +41,8 @@ print(all_features_dataframe.columns)
 
 # Print out the number of candidate centerlines in each scene
 for index, row in all_features_dataframe.iterrows():
-    print("Sequence {} has {} candidates.".format(row["SEQUENCE"], len(row["CANDIDATE_CENTERLINES"])))
+    if "CANDIDATE_CENTERLINES" in row.keys():
+        print("Sequence {} has {} candidates.".format(row["SEQUENCE"], len(row["CANDIDATE_CENTERLINES"])))
 
 # Print out the head of the dataframe
 print(all_features_dataframe.head())

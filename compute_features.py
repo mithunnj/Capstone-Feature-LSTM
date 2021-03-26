@@ -16,11 +16,17 @@ from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 import pickle as pkl
+import sys
 
-from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE
+from argoverse.map_representation.map_api import ArgoverseMap
+
+from utils.baseline_config import RAW_DATA_FORMAT, _FEATURES_SMALL_SIZE, FEATURE_TYPES
 from utils.map_features_utils import MapFeaturesUtils
 from utils.social_features_utils import SocialFeaturesUtils
-
+from utils.compute_features_utils import compute_physics_features 
+from utils.compute_features_utils import save_ml_physics_features
+from utils.compute_semantic_features import compute_semantic_features 
+from utils.compute_lane_following_features import compute_lane_following_features
 
 def parse_arguments() -> Any:
     """Parse command line arguments."""
@@ -41,6 +47,11 @@ def parse_arguments() -> Any:
                         required=True,
                         type=str,
                         help="train/val/test")
+    parser.add_argument("--feature_type",
+                        required=True,
+                        type=str,
+                        help="One of candidates_lanes/physics/semantic_map/lead_agent/lane_following (stored in config).",
+                        choices=FEATURE_TYPES.keys())
     parser.add_argument(
         "--batch_size",
         default=100,
@@ -58,11 +69,113 @@ def parse_arguments() -> Any:
     parser.add_argument("--small",
                         action="store_true",
                         help="If true, a small subset of data is used.")
-    parser.add_argument("--extended_map",
+    parser.add_argument("--multi_agent",
                         default=False,
-                        type=bool,
-                        help="If true, compute features returns an extended map.")
+                        action="store_true",
+                        help="If true, compute features will only compute the lane selection features.")
     return parser.parse_args()
+
+
+def compute_features(
+        seq_id: int,
+        seq_path: str,
+        map_features_utils_instance: MapFeaturesUtils,
+        social_features_utils_instance: SocialFeaturesUtils,
+        avm: ArgoverseMap,
+        precomputed_lanes: pd.DataFrame,
+        precomputed_physics: pd.DataFrame
+) -> Tuple[list, list]:
+    """Compute features for all.
+
+    Args:
+        seq_path (str): file path for the sequence whose features are to be computed.
+        map_features_utils_instance: MapFeaturesUtils instance.
+        social_features_utils_instance: SocialFeaturesUtils instance.
+    Returns:
+        columns (list of strings): ["SEQUENCE", "TRACK_ID", "FEATURE_1", ..., "FEATURE_N"]
+        features_dataframe (pandas dataframe): Pandas dataframe where each cell is list of features or a list of features per centerline
+
+    """
+    args = parse_arguments()
+
+    scene_df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
+
+    columns = list()
+    all_feature_rows = list()
+
+    # Compute agent list based on args.multi_agent
+    agent_list = []
+    if args.multi_agent:
+
+        # Construct list of agents in the scene
+        agent_list = scene_df["TRACK_ID"].unique().tolist()
+    
+    else:
+        # Construct a list of only the Argo AGENT
+        agent_list = scene_df[scene_df["OBJECT_TYPE"] == "AGENT"]["TRACK_ID"].unique().tolist()
+
+    # Call function for the given feature type
+    if args.feature_type == "testing": # Temp values for testing
+        columns = ["SEQUENCE", "TRACK_ID", "MY_FEATURE"]
+        all_feature_rows = [ [ seq_id, agent_list[0], 1.0 ], [ seq_id + 1, agent_list[0], 2.0 ]]
+
+    elif args.feature_type == "candidate_lanes":
+        columns, all_feature_rows = map_features_utils_instance.compute_lane_candidates(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            obs_len=args.obs_len,
+            seq_len=args.obs_len + args.pred_len,
+            raw_data_format=RAW_DATA_FORMAT,
+            mode=args.mode,
+            multi_agent=args.multi_agent,
+            avm=avm
+        )
+ 
+    elif args.feature_type == "physics":
+        columns, all_feature_rows = compute_physics_features(seq_path, seq_id)
+
+    elif args.feature_type == "semantic_map":
+        columns, all_feature_rows = compute_semantic_features(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            precomp_lanes = precomputed_lanes,
+            raw_data_format = RAW_DATA_FORMAT,
+            map_inst = avm
+        )
+
+    elif args.feature_type == "lead_agent":
+        columns, all_feature_rows = map_features_utils_instance.compute_lead(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            agent_list=agent_list,
+            obs_len=args.obs_len,
+            seq_len=args.obs_len + args.pred_len,
+            raw_data_format=RAW_DATA_FORMAT,
+            mode=args.mode,
+            multi_agent=args.multi_agent,
+            avm=avm,
+            precomputed_physics=precomputed_physics
+        )
+
+    elif args.feature_type == "lane_following":
+        columns, all_feature_rows = compute_lane_following_features(
+            seq_id=seq_id,
+            scene_df=scene_df,
+            obs_len=args.obs_len,
+            agent_list=agent_list,
+            precomputed_lanes=precomputed_lanes,
+            raw_data_format=RAW_DATA_FORMAT,
+            map_inst=avm,
+            precomputed_physics=precomputed_physics
+        )
+
+    else:
+        assert False, "Invalid feature type."
+
+
+    return columns, all_feature_rows
 
 
 def load_seq_save_features(
@@ -71,6 +184,9 @@ def load_seq_save_features(
         save_dir: str,
         map_features_utils_instance: MapFeaturesUtils,
         social_features_utils_instance: SocialFeaturesUtils,
+        argoverse_map_api_instance: ArgoverseMap,
+        precomputed_lanes: pd.DataFrame,
+        precomputed_physics: pd.DataFrame
 ) -> None:
     """Load sequences, compute features, and save them.
     
@@ -82,114 +198,54 @@ def load_seq_save_features(
         social_features_utils_instance: SocialFeaturesUtils instance
 
     """
-    count = 0
     args = parse_arguments()
-    data = []
+    all_rows = []
+
+    feature_columns, scene_rows = list(), dict()
 
     # Enumerate over the batch starting at start_idx
-    for seq in sequences[start_idx:start_idx + args.batch_size]:
+    for count, seq in enumerate(sequences[start_idx : start_idx + args.batch_size]):
 
         if not seq.endswith(".csv"):
             continue
-
-        file_path = f"{args.data_dir}/{seq}"
+        
+        seq_file_path = f"{args.data_dir}/{seq}"
         seq_id = int(seq.split(".")[0])
 
         # Compute social and map features
-        features, map_feature_helpers = compute_features(
-            file_path, map_features_utils_instance,
-            social_features_utils_instance)
-        count += 1
-        data.append([
-            seq_id,
-            features,
-            map_feature_helpers["CANDIDATE_CENTERLINES"],
-            map_feature_helpers["ORACLE_CENTERLINE"],
-            map_feature_helpers["CANDIDATE_NT_DISTANCES"],
-            map_feature_helpers["CANDIDATE_LANE_SEGMENTS"],
-            map_feature_helpers["LANE_SEGMENTS_IN_BUBBLE"],
-            map_feature_helpers["LANE_SEGMENTS_IN_FRONT"],
-            map_feature_helpers["LANE_SEGMENTS_IN_BACK"],
-        ])
+        feature_columns, scene_rows = compute_features(
+            seq_id, seq_file_path, map_features_utils_instance,
+            social_features_utils_instance,
+            argoverse_map_api_instance,
+            precomputed_lanes,
+            precomputed_physics)
 
-        print(
-            f"{args.mode}:{count}/{args.batch_size} with start {start_idx} and end {start_idx + args.batch_size}"
-        )
+        # Merge the features for all agents and all scenes
+        all_rows.extend(scene_rows)
 
+        if count % 200 == 0:
+            print(
+                f"count:{count}/total:{len(sequences)} with start {start_idx} and end {start_idx + args.batch_size}"
+            )
+
+    assert "SEQUENCE" in feature_columns, "Missing feature column: SEQUENCE"
+    assert "TRACK_ID" in feature_columns, "Missing feature column: TRACK_ID"
+
+    # Create dataframe for this batch
     data_df = pd.DataFrame(
-        data,
-        columns=[
-            "SEQUENCE",
-            "FEATURES",
-            "CANDIDATE_CENTERLINES",
-            "ORACLE_CENTERLINE",
-            "CANDIDATE_NT_DISTANCES",
-            "CANDIDATE_LANE_SEGMENTS",
-            "LANE_SEGMENTS_IN_BUBBLE",
-            "LANE_SEGMENTS_IN_FRONT",
-            "LANE_SEGMENTS_IN_BACK",
-        ],
+        all_rows,
+        columns=feature_columns,
     )
+
+    # Save the ml feature data format
+    if args.feature_type == "physics":
+        save_ml_physics_features(all_rows, args.mode, seq_file_path, args.obs_len)
 
     # Save the computed features for all the sequences in the batch as a single file
     os.makedirs(save_dir, exist_ok=True)
     data_df.to_pickle(
-        f"{save_dir}/forecasting_features_{args.mode}_{start_idx}_{start_idx + args.batch_size}.pkl"
+        f"{save_dir}/forecasting_features_{args.mode}_{args.feature_type}_{start_idx}_{start_idx + args.batch_size}.pkl"
     )
-
-
-def compute_features(
-        seq_path: str,
-        map_features_utils_instance: MapFeaturesUtils,
-        social_features_utils_instance: SocialFeaturesUtils,
-) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """Compute social and map features for the sequence.
-
-    Args:
-        seq_path (str): file path for the sequence whose features are to be computed.
-        map_features_utils_instance: MapFeaturesUtils instance.
-        social_features_utils_instance: SocialFeaturesUtils instance.
-    Returns:
-        merged_features (numpy array): SEQ_LEN x NUM_FEATURES
-        map_feature_helpers (dict): Dictionary containing helpers for map features
-
-    """
-    args = parse_arguments()
-    df = pd.read_csv(seq_path, dtype={"TIMESTAMP": str})
-
-    # Get social and map features for the agent
-    agent_track = df[df["OBJECT_TYPE"] == "AGENT"].values
-
-    # Social features are computed using only the observed trajectory
-    social_features = social_features_utils_instance.compute_social_features(
-        df, agent_track, args.obs_len, args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT)
-
-    # agent_track will be used to compute n-t distances for future trajectory,
-    # using centerlines obtained from observed trajectory
-    map_features, map_feature_helpers = map_features_utils_instance.compute_map_features(
-        agent_track,
-        args.obs_len,
-        args.obs_len + args.pred_len,
-        RAW_DATA_FORMAT,
-        args.mode,
-    )
-
-    # Combine social and map features
-
-    # If track is of OBS_LEN (i.e., if it's in test mode), use agent_track of full SEQ_LEN,
-    # But keep (OBS_LEN+1) to (SEQ_LEN) indexes having None values
-    if agent_track.shape[0] == args.obs_len:
-        agent_track_seq = np.full(
-            (args.obs_len + args.pred_len, agent_track.shape[1]), None)
-        agent_track_seq[:args.obs_len] = agent_track
-        merged_features = np.concatenate(
-            (agent_track_seq, social_features, map_features), axis=1)
-    else:
-        merged_features = np.concatenate(
-            (agent_track, social_features, map_features), axis=1)
-
-    return merged_features, map_feature_helpers
 
 
 def merge_saved_features(batch_save_dir: str) -> None:
@@ -216,7 +272,16 @@ def merge_saved_features(batch_save_dir: str) -> None:
 
     # Save the features for all the sequences into a single file
     all_features_df.to_pickle(
-        f"{args.feature_dir}/forecasting_features_{args.mode}.pkl")
+        f"{args.feature_dir}/forecasting_features_{args.mode}_{args.feature_type}.pkl")
+
+
+def load_precomputed_features(args, feature_type):
+    """Load the specified precomputed features."""
+
+    feature_path = f"{args.feature_dir}/forecasting_features_{args.mode}_{feature_type}.pkl"
+    print(f"Loading precomputed {feature_type}... {feature_path}")
+    loaded_features = pkl.load( open( feature_path, "rb" ) )
+    return pd.DataFrame(loaded_features)
 
 
 if __name__ == "__main__":
@@ -225,22 +290,61 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    map_features_utils_instance = MapFeaturesUtils()
-    social_features_utils_instance = SocialFeaturesUtils()
+    # Warn if the data directory does not contain the mode
+    if args.mode not in args.data_dir:
+        print("WARNING: Mode does not match data directory name.")
+    
+    # Check if feature does not support multi-agent computation
+    if args.multi_agent:
+        # Check the feature supports multi agent
+        assert FEATURE_TYPES[args.feature_type]["supports_multi_agent"], "This feature does not support computing for multiple agents in the scene."
 
+    # Initialize Argoverse Map API and util functions
+    map_features_utils_instance = MapFeaturesUtils()
+    argoverse_map_api_instance = ArgoverseMap()
+    social_features_utils_instance = None # SocialFeaturesUtils()
+
+    # If required, load precomputed candidate lane pickle file
+    precomputed_lanes = None
+    if FEATURE_TYPES[args.feature_type]["uses_lanes"]:
+        precomputed_lanes = load_precomputed_features(args, "candidate_lanes")
+
+    # If required, load precomputed physics pickle files
+    precomputed_physics = None
+    if FEATURE_TYPES[args.feature_type]["uses_physics"]:
+        precomputed_physics = load_precomputed_features(args, "physics")
+
+    # Get list of scenes and create temp directory
     sequences = os.listdir(args.data_dir)
     temp_save_dir = tempfile.mkdtemp()
 
+    # If the small flag is set, restrict the number os sequences (for testing)
     num_sequences = _FEATURES_SMALL_SIZE if args.small else len(sequences)
 
+    # Compute features in parallel batches
     Parallel(n_jobs=-2)(delayed(load_seq_save_features)(
         i,
         sequences,
         temp_save_dir,
         map_features_utils_instance,
         social_features_utils_instance,
+        argoverse_map_api_instance,
+        precomputed_lanes,
+        precomputed_physics
     ) for i in range(0, num_sequences, args.batch_size))
-    merge_saved_features(temp_save_dir)
+
+    # Switch the above parrallel call to this if visualizing with cProfile
+    # load_seq_save_features(
+    #     0,
+    #     sequences,
+    #     temp_save_dir,
+    #     map_features_utils_instance,
+    #     social_features_utils_instance,
+    #     argoverse_map_api_instance
+    # )
+
+    # Merge the batched features and clean up
+    merge_saved_features(temp_save_dir) 
     shutil.rmtree(temp_save_dir)
 
     print(

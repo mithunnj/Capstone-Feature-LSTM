@@ -1,5 +1,20 @@
 """This module defines all the config parameters."""
 
+FEATURE_TYPES = {
+    "testing":
+        {"supports_multi_agent": False, "uses_lanes": False, "uses_physics": False},
+    "candidate_lanes":
+        {"supports_multi_agent": False, "uses_lanes": False, "uses_physics": False},
+    "physics":
+        {"supports_multi_agent": True, "uses_lanes": False, "uses_physics": False},
+    "semantic_map":
+        {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": False},
+   "lead_agent":
+        {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": True},
+    "lane_following":
+        {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": True},
+}
+
 FEATURE_FORMAT = {
     "TIMESTAMP": 0,
     "TRACK_ID": 1,
