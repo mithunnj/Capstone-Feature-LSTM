@@ -9,7 +9,9 @@ FEATURE_TYPES = {
         {"supports_multi_agent": True, "uses_lanes": False, "uses_physics": False},
     "semantic_map":
         {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": False},
-    "lead_agent":
+   "lead_agent":
+        {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": True},
+    "lane_following":
         {"supports_multi_agent": False, "uses_lanes": True, "uses_physics": True},
 }
 
