@@ -25,6 +25,17 @@ Code base for the Capstone team's solution based off of the initial Argoverse Co
 |    Mithun Jothiravi  |   Mechanical Engineering   |
 |    Samarth Sinha  |  Electrical & Computer Engineering   |
 
+## Results:
+
+![Poster](./images/slide1.png)
+
+### Legend:
+- Green: Autonomous Vehicle
+- Red: Motion prediction agent 
+- Grey: Other actors in the scene
+
+![Sample Results](./images/slide2.png)
+
 
 # Argoverse Motion Forecasting Baselines
 
